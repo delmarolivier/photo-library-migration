@@ -337,6 +337,7 @@ def test_matching_recovers_the_sidecar_google_would_write(
     media: list[str] = []
     jsons: list[str] = []
     expected: dict[str, str | None] = {}
+    flipped_bases: list[str] = []
     for stem, ext, style, has_sidecar, edit in folder_spec:
         base = truncate_media_name(stem + ext)
         index = seen.get(base, 0)
@@ -354,6 +355,11 @@ def test_matching_recovers_the_sidecar_google_would_write(
             assume(parse_media_name(edited).edited is not None)
             media.append(edited)
             expected[edited] = sidecar
+            if flip:
+                flipped_bases.append(base)
+    # Two originals differing only in extension case, plus an edit with its case flipped,
+    # cannot be told apart by any rule.
+    assume(not any(b != o and b.casefold() == o.casefold() for b in flipped_bases for o in seen))
     assume(len(set(media)) == len(media))
     assume(len(set(jsons)) == len(jsons))
 
@@ -362,3 +368,12 @@ def test_matching_recovers_the_sidecar_google_would_write(
     assert set(result.matches) == set(media)
     assert {name: m.sidecar for name, m in result.matches.items()} == expected
     assert result.orphans == ()
+
+
+def test_an_edit_prefers_the_original_with_exactly_its_extension() -> None:
+    folder = match_folder(
+        ["0.JPG", "0.jpg", "0-bearbeitet.jpg"], ["0.JPG.supplemental-metadata.json"]
+    )
+
+    assert folder.matches["0-bearbeitet.jpg"].original == "0.jpg"
+    assert folder.matches["0-bearbeitet.jpg"].sidecar is None

@@ -1,12 +1,34 @@
 """Command-line entry point: `photomigrate`."""
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
+from rich.console import Console
 
 from photomigrate import __version__
+from photomigrate.ingest.policy import local_zone
+from photomigrate.ingest.stage import IngestStage
+from photomigrate.ingest.takeout import TakeoutError
+from photomigrate.runner import (
+    DEFAULT_CATALOGUE,
+    DEFAULT_PLAN_DIR,
+    StageFailedError,
+    render_result,
+    run_stage,
+)
+
+DEFAULT_WORK_DIR = Path("data/work")
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+
+
+@dataclass(frozen=True)
+class Settings:
+    catalogue: Path
+    plan_dir: Path
 
 
 def _print_version(value: bool) -> None:
@@ -17,18 +39,71 @@ def _print_version(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
             "--version", callback=_print_version, is_eager=True, help="Show the version and exit."
         ),
     ] = False,
+    catalogue: Annotated[
+        Path, typer.Option("--catalogue", envvar="PHOTOMIGRATE_CATALOGUE", help="SQLite catalogue.")
+    ] = DEFAULT_CATALOGUE,
+    plan_dir: Annotated[
+        Path, typer.Option("--plan-dir", envvar="PHOTOMIGRATE_PLAN_DIR", help="Where plans go.")
+    ] = DEFAULT_PLAN_DIR,
 ) -> None:
-    """Merge Google Photos into iCloud Photos. Never deletes anything."""
+    """Merge Google Photos into iCloud Photos. Never deletes anything.
+
+    Every stage that writes is a dry run unless given --apply.
+    """
+    ctx.obj = Settings(catalogue, plan_dir)
+
+
+def _zone(name: str | None) -> ZoneInfo:
+    if name is None:
+        return local_zone()
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise typer.BadParameter(f"unknown time zone {name!r}", param_hint="--timezone") from None
+
+
+@app.command()
+def ingest(
+    ctx: typer.Context,
+    takeout_dir: Annotated[
+        Path,
+        typer.Argument(
+            file_okay=False, help="Folder with the takeout-*.zip parts (or an unzipped Takeout/)."
+        ),
+    ],
+    work_dir: Annotated[
+        Path, typer.Option("--work-dir", help="Scratch space for streaming items.")
+    ] = DEFAULT_WORK_DIR,
+    timezone: Annotated[
+        str | None,
+        typer.Option("--timezone", help="IANA zone for sidecar-only dates (default: this Mac's)."),
+    ] = None,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Catalogue the items (else a dry run).")
+    ] = False,
+) -> None:
+    """Catalogue every Google Photos item straight from the Takeout zips (read-only)."""
+    settings: Settings = ctx.obj
+    zone = _zone(timezone)
+    try:
+        with IngestStage(takeout_dir, work_dir, zone=zone) as stage:
+            result = run_stage(
+                stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
+            )
+    except (TakeoutError, StageFailedError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    render_result(result, Console())
 
 
 _STAGES = {
-    "ingest": "Unzip Takeout, match sidecars, write metadata to working copies.",
     "index": "Read-only index of the iCloud library.",
     "analyse": (
         "Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location."

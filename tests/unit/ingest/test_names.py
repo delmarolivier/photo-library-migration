@@ -1,11 +1,15 @@
 """Media file names: kind, duplicate index, edited copies and dates hidden in names."""
 
+import string
 import unicodedata
 from datetime import datetime
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from photomigrate.ingest.names import date_from_filename, media_kind, parse_media_name
+from photomigrate.testing.takeout import EDITED_SUFFIXES, duplicate_name, edited_name
 
 
 @pytest.mark.parametrize(
@@ -99,3 +103,42 @@ def test_decomposed_unicode_is_normalised() -> None:
 )
 def test_dates_in_file_names(name: str, expected: datetime | None) -> None:
     assert date_from_filename(name) == expected
+
+
+_STEM = st.text(string.ascii_letters + string.digits + "_- .é", min_size=1, max_size=40).filter(
+    lambda s: (
+        s == s.strip(" .")
+        and parse_media_name(s + ".jpg").edited is None
+        and parse_media_name(s + ".jpg").index == 0
+    )
+)
+
+
+@given(
+    stem=_STEM,
+    ext=st.sampled_from([".jpg", ".JPG", ".heic", ".MOV", ".mp4"]),
+    index=st.integers(0, 12),
+    lang=st.none() | st.sampled_from(sorted(EDITED_SUFFIXES)),
+)
+def test_parsing_recovers_what_takeout_encoded_in_a_name(
+    stem: str, ext: str, index: int, lang: str | None
+) -> None:
+    base = stem + ext
+    name = edited_name(base, lang=lang, index=index) if lang else duplicate_name(base, index)
+
+    parsed = parse_media_name(name)
+
+    assert parsed.index == index
+    assert parsed.ext == ext
+    assert parsed.edited == (stem if lang else None)
+    if not lang:
+        assert parsed.base == base
+
+
+def test_a_cut_suffix_is_found_even_when_an_index_follows() -> None:
+    name = "0" * 33 + "-bearbeite(1).jpg"
+
+    parsed = parse_media_name(name)
+
+    assert parsed.edited == "0" * 33
+    assert parsed.index == 1

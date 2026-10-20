@@ -274,7 +274,14 @@ def _original_of(edit: MediaName, folder: Mapping[str, MediaName]) -> str | None
         for name, p in folder.items()
         if p.edited is None and p.stem == edit.edited and p.index == edit.index
     ]
-    found.sort(key=lambda name: (folder[name].ext.casefold() != edit.ext.casefold(), name))
+    # Same extension first, then the same ignoring case (edits are sometimes .jpg next to .JPG).
+    found.sort(
+        key=lambda name: (
+            folder[name].ext != edit.ext,
+            folder[name].ext.casefold() != edit.ext.casefold(),
+            name,
+        )
+    )
     return found[0] if found else None
 
 

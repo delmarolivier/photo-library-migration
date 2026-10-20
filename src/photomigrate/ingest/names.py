@@ -92,7 +92,7 @@ def parse_media_name(name: str) -> MediaName:
         index=index,
         stem=stem,
         ext=ext,
-        edited=_edited_original(stem, len(name)),
+        edited=_edited_original(stem, len(stem) + len(ext)),  # the cut comes before any (N)
     )
 
 
