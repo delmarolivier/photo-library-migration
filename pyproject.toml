@@ -70,7 +70,9 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "PT", "RUF", "S"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S603", "S607"]
+# Seeded randomness for reproducible fixtures, not security.
+"src/photomigrate/testing/**" = ["S311"]
 
 [tool.mypy]
 python_version = "3.12"
