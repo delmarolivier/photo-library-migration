@@ -74,6 +74,7 @@ def test_each_item_records_identity_hashes_dates_place_and_size(
     assert item.phash is not None
     assert item.dhash is not None
     assert item.phash_fine is not None
+    assert json.loads(item.quality)["megapixels"] == pytest.approx(7.585, abs=0.001)
     assert (item.width, item.height) == (2754, 2754)
     assert item.latitude == pytest.approx(-34.91889167)
     assert item.timezone == "Australia/Adelaide"
@@ -114,6 +115,7 @@ def test_live_photos_and_videos(live_library: Path, tmp_path: Path) -> None:
     assert movie.duration > 0
     assert movie.video_signature is not None
     assert movie.bitrate is not None
+    assert set(json.loads(movie.quality)) == {"brightness", "motion"}
 
 
 def test_missing_originals_are_reported_not_skipped(test_library: Path, tmp_path: Path) -> None:
