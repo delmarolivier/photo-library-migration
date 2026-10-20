@@ -225,6 +225,13 @@ def test_an_action_for_an_item_that_is_gone_is_an_error(setup, tmp_path: Path) -
 # --- the command ---------------------------------------------------------------------------
 
 
+def plain(output: str) -> str:
+    """CLI output without Rich's colours and panel borders (CI terminals get both)."""
+    import re
+
+    return " ".join(re.sub(r"\x1b\[[0-9;]*m", "", output).replace("│", " ").split())
+
+
 def cli_args(setup, tmp_path: Path, *extra: str) -> list[str]:  # type: ignore[no-untyped-def]
     path, takeout, library = setup
     return ["--catalogue", str(path), "--plan-dir", str(tmp_path / "plans"), "import",
@@ -288,7 +295,7 @@ def test_applying_needs_the_takeout_and_the_library(setup, tmp_path: Path) -> No
     result = CliRunner().invoke(app, ["--catalogue", str(path), "import", "--apply"])
 
     assert result.exit_code == 2
-    assert "--takeout" in result.output
+    assert "--takeout" in plain(result.output)
 
 
 def test_a_library_photos_does_not_have_open_stops_the_import(
@@ -366,7 +373,7 @@ def test_applying_without_a_library_is_refused(setup, tmp_path: Path) -> None:  
     )
 
     assert result.exit_code == 2
-    assert "--library" in result.output
+    assert "--library" in plain(result.output)
 
 
 def test_the_real_library_is_refused_unless_photos_has_it_open(
