@@ -28,6 +28,8 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
+      - name: Install exiftool and ffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg libimage-exiftool-perl
       - run: uv sync --locked
       - run: uv run ruff check
       - run: uv run ruff format --check

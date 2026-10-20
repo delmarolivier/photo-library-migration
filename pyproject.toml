@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "pillow>=13.0.0",
+    "pillow-heif>=1.8.1",
     "typer>=0.27.3",
 ]
 
@@ -68,7 +70,9 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "PT", "RUF", "S"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S603", "S607"]
+# Seeded randomness for reproducible fixtures, not security.
+"src/photomigrate/testing/**" = ["S311"]
 
 [tool.mypy]
 python_version = "3.12"

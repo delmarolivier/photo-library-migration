@@ -55,6 +55,19 @@ copies), with `googlePhotosOrigin.composition.type == "AUTO"`. They are not came
 - `-edited` copies are very common, so edited-version handling (M2-04) is a main path.
 - No Live Photo still and motion pairs here: the desktop uploader does not send motion parts.
 
+## Modelled rules (not observed yet)
+
+Taken from public reports (the google-photos-takeout-helper project). The fixture generator
+implements them; ingest must not rely on them exactly:
+
+- Media names are cut to 47 characters, keeping the extension.
+- The sidecar name before `.json` is cut to 46 characters, counted from the *on-disk* media
+  name plus any supplemental suffix. So `…long_name.jpg` (47 chars) gets `…long_name.jp.json`,
+  and medium names get a partial suffix (`….jpg.supplemental-met.json`).
+- Edited copies follow the same 47-character rule, which can cut `-edited` down to `-ed`.
+- Localised edit suffixes: `-modifié` (fr), `-bearbeitet` (de), `-modificato` (it),
+  `-bewerkt` (nl), `-edytowane` (pl), `-編集済み` (ja).
+
 ## Not in this sample, but fixtures still need it
 
 Truncated names, legacy `.json` sidecars, `Photos from YYYY` folders, Live Photo pairs,

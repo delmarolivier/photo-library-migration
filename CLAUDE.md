@@ -58,6 +58,9 @@ photomigrate report   # reconciliation report
 - Clutter queue: screenshots, receipts/documents, memes, WhatsApp/messaging forwards.
 - Location backfill from neighbouring shots; optional Google Maps Timeline export.
 - Reconciliation: every Google item ends as imported | duplicate-of-existing | rejected-by-user. Zero unaccounted.
+- Google-made creations (-MOTION.gif, -MIX, -SMILE, composition AUTO) go to the clutter review queue,
+  never auto-imported. (2026-10-20)
+- Takeout face-tag names (people[].name) become Photos keywords "People/<name>". (2026-10-20)
 
 ## Session workflow
 1. Read CLAUDE.md, docs/PROGRESS.md, then Linear P-CLA-3.
