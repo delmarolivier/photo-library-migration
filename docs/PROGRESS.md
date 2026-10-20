@@ -45,3 +45,7 @@
     (an allowed root). Media extensions are gitignored, so committed samples need a
     `.gitignore` negation for `tests/fixtures/`.
   - Any exiftool wrapper using stay-open mode must call `announce_path()` per file.
+  - `data-in/` holds real Takeout samples (Delmar, 2026-10-20). Agreed use: a structural
+    reference for M1-02 (see docs/TAKEOUT_FORMAT.md), then an opt-in, local-only, dry-run
+    ingest smoke test after M1-04. It never runs in CI, and Delmar confirms before its first run.
+    The survey scripts live outside the repo (/tmp/photomigrate-survey) and print shapes only.
