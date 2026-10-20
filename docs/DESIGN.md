@@ -2,6 +2,36 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Location backfill (M3-05)
+
+`photomigrate analyse [--timeline Timeline.json] [--timezone ZONE]` runs `locations`
+(`analyse.locations`) after clutter.
+
+- **Neighbours:** a shot without GPS borrows from the same camera's located shots within
+  `[location] window_minutes` (30), by wall-clock time. Between one shot before and one after,
+  the place is interpolated in time (`interpolated`); with one, it is copied (`neighbour`).
+  The nearest shot on each side counts. Shots without a camera borrow nothing.
+  `any_device = true` lets every camera's shots count (two phones at one event).
+- **Timeline** (`photomigrate.timeline`, only when no neighbour helped): Delmar's export is the
+  iOS on-device format, a list of `visit`, `activity` and `timelinePath` segments with
+  `geo:lat,lon` strings. A moment inside a visit takes the shortest such visit
+  (`timeline-visit`). Otherwise it is interpolated between the path and activity points just
+  before and after it, if both are within `timeline_tolerance_minutes` (15), or takes the one
+  that is (`timeline-path`). Local times are read in `--timezone` (default: this Mac's). The
+  real export parses: 692 visits and 7,869 points, from November 2025 to October 2026.
+- **Proposals only** (catalogue v13 `inferred_locations`: place, method, evidence). The review
+  approves each one with the item's `location` decision `{"approve": true}`. The importer
+  writes approved places (`approved_location`) with the keyword `location-inferred`. Stale
+  proposals are retired.
+- **Left out:** items with their own GPS, Google edits, creations and Live Photo motion clips,
+  proposed duplicates, and the clutter queue.
+- **Config:** `true`/`false` settings are now allowed (`any_device`); anything else is an
+  error.
+- **On the real sample:** 557 iPhone 4S photos have no GPS at all, and all 735 iPhone 5 photos
+  do. So "same device" proposes nothing. `any_device` would propose 56 at 30 minutes (28 at
+  5 minutes, 168 at 2 hours). The Timeline export starts in 2025 and the sample is from
+  2013–2014, so it doesn't help there.
+
 ## Clutter (M3-04)
 
 `photomigrate analyse` runs `clutter` (`analyse.clutter`) after best-shot. Each item gets a

@@ -2,10 +2,13 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M3-04] CLA-86 (clutter detection).
-- Next issue: [M3-05] CLA-87 (location backfill).
+- Last completed issue: [M3-05] CLA-87 (location backfill).
+- Next issue: [M3-06] CLA-88 (review gallery).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
+  - Location backfill: borrow GPS across devices (`[location] any_device = true`)? On the
+    sample, the iPhone 4S shots have no GPS and the iPhone 5 shots do; across devices, 56
+    would get a proposal at 30 minutes. The default stays "same device", as the issue says.
   - Best shot: `min_similarity` defaults to 0.94, measured on the sample (DESIGN, "Best
     shot"). Please judge the groups in the review gallery (M3-06); lower groups more.
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
@@ -17,6 +20,17 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M3-05
+- `photomigrate.timeline` parses the iOS Timeline export (visits, activities, paths) and
+  locates a moment; `testing.timeline.TimelineBuilder` writes synthetic exports.
+- `analyse.locations` proposes places for shots without GPS from the same camera's located
+  shots within 30 minutes (interpolated between two), else from `--timeline`. Proposals
+  (catalogue v13 `inferred_locations`) are written only once approved (`approved_location`,
+  keyword `location-inferred`). `any_device` switch; config accepts `true`/`false`.
+- Real sample: nothing to propose with the same device (iPhone 4S shots have no GPS at all);
+  56 across devices. Question posted on CLA-87.
+- Tests: 1,000, 100%.
+
 ### 2026-10-20: session 1 (continued): M3-04
 - Ingest and index detect text with Vision (`text_regions`, catalogue v12 `items.text`); index
   records Photos' `screenshot` flag. open_clip text prompts (`embed_texts`) give zero-shot
