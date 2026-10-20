@@ -9,7 +9,9 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
+        exclude: ^src/photomigrate/review/static/htmx\.min\.js$  # vendored, byte for byte
       - id: trailing-whitespace
+        exclude: ^src/photomigrate/review/static/htmx\.min\.js$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.1
     hooks:

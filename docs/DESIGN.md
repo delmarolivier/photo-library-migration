@@ -2,6 +2,45 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Review gallery (M3-06)
+
+`photomigrate review [--takeout DIR] [--library PATH] [--port 8765]` serves a local gallery
+(`photomigrate.review`: FastAPI, Jinja2, htmx 2.0.4 vendored). It **only records decisions**.
+Each answer goes into the catalogue's `decisions` table at once, so a review can stop and
+resume at any time. Nothing else changes, and a test compares every other table before and
+after.
+
+- **Queues** (`review.queues`), one card per question, each with a proposal (key `a`) and
+  other answers:
+
+  | Queue | Decision (subject, kind) | Value |
+  |---|---|---|
+  | Duplicates | group, `duplicate` | `{"keeper": "source:key"}` or `{"reject": true}` (not duplicates) |
+  | Best shot | group, `best-shot` | `{"keep": [...]}`. Pairs keep both and are not asked. |
+  | Edited versions | group, `edit-pair` | `{"keep": [Takeout paths]}`. A bulk button applies one policy to every pair. |
+  | Dates | group, `date` | the `date_fixes` answers (form: accept, keep, a date, a year, a shift in hours) |
+  | Clutter | item, `clutter` | `{"reject": true/false}`. Bulk: reject a whole category. |
+  | Quality flags | item, `quality` | `{"reject": true/false}` |
+  | Locations | item, `location` | `{"approve": true/false}`, with a map tile |
+  | Unmatched | item, `unmatched` | `{"reject": true/false}` (no sidecar, bad sidecar, unpaired motion or edit, original missing) |
+
+  Answers are checked before they're stored. The question must be one the gallery shows,
+  and date answers must be ones `date_fixes` can apply. Bulk answers are all-or-nothing.
+- **Thumbnails** (`review.thumbs`): Google items are streamed from the Takeout zips, iCloud
+  items read from the library's originals (with a `ReadOnlyGuard` on the library while the
+  server runs). Photos are decoded as everywhere else (upright, HEIC too); videos get an
+  ffmpeg poster frame. The JPEG is at most 320 px, cached in `data/thumbs/` by SHA-256. A file
+  that isn't at hand gets a grey placeholder, which is not cached. On the real sample: 68 ms
+  from the 4 GB zip, 5 ms cached, 0.27 s for a video poster.
+- **Keyboard:** `j`/`k` move between cards, `a` accepts, `r` rejects, `k` keeps, `1`–`9` picks a
+  keeper, `b`/`o`/`e` set edit pairs, `s` saves best-shot ticks, `?` shows help. After an
+  answer, focus moves to the next unanswered card. Every queue has a progress bar.
+- **Who can reach it:** the server binds to `127.0.0.1` only (`server_config`, no option to
+  change it; a test starts it and checks the socket). Requests naming another host are
+  refused (DNS rebinding). Requests that write need a same-origin `Origin` header, so another
+  web site open in the browser can't record answers. The location map's tile is the one
+  outside request: the browser fetches it from tile.openstreetmap.org, with no referrer.
+
 ## Location backfill (M3-05)
 
 `photomigrate analyse [--timeline Timeline.json] [--timezone ZONE]` runs `locations`

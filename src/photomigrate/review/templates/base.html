@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Review{% endblock %} · photomigrate</title>
+  <link rel="stylesheet" href="/static/review.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/review.js" defer></script>
+</head>
+<body>
+  <header>
+    <a href="/">photomigrate review</a>
+    <span class="hint">Nothing is imported or deleted here: answers are only recorded. Keys: j/k move, a accept, ? help.</span>
+  </header>
+  <div id="help" hidden>
+    <p><kbd>j</kbd>/<kbd>k</kbd> next/previous card · <kbd>a</kbd> accept the proposal ·
+      <kbd>r</kbd> reject · <kbd>k</kbd> keep · <kbd>1</kbd>–<kbd>9</kbd> pick a keeper ·
+      <kbd>b</kbd>/<kbd>o</kbd>/<kbd>e</kbd> both / original / edit · <kbd>?</kbd> this help</p>
+  </div>
+  <main>{% block main %}{% endblock %}</main>
+</body>
+</html>

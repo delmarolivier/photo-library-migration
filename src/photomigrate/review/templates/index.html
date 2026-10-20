@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Review queues</h1>
+<table class="queues">
+  {% for queue, decided, total in rows %}
+  <tr>
+    <td><a href="/queue/{{ queue.name }}">{{ queue.title }}</a></td>
+    <td><progress value="{{ decided }}" max="{{ total or 1 }}"></progress></td>
+    <td>{{ decided }} / {{ total }}</td>
+    <td class="hint">{{ queue.help }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,56 @@
+<article class="card{% if card.decision is not none %} decided{% endif %}" tabindex="0"
+         id="card-{{ card.kind }}-{{ card.subject_id }}">
+  <h2>{{ card.title }}</h2>
+  <div class="members">
+    {% for member in card.members %}
+    <figure class="role-{{ member.role or 'item' }}">
+      <img src="/thumb/{{ member.item_id }}" loading="lazy" alt="{{ member.label }}">
+      <figcaption>{% if card.members | length > 1 %}<b>{{ loop.index }}</b> {% endif %}{{ member.label }}
+        {% if member.role %}<em>{{ member.role }}</em>{% endif %}
+        {% for line in member.lines %}{% if line %}<br><small>{{ line }}</small>{% endif %}{% endfor %}</figcaption>
+    </figure>
+    {% endfor %}
+  </div>
+  {% if card.extra.map %}
+  <a class="map" href="{{ card.extra.map.link }}" target="_blank" rel="noopener noreferrer">
+    <img src="{{ card.extra.map.url }}" alt="map" referrerpolicy="no-referrer">
+    <span class="pin" style="left: {{ card.extra.map.left }}%; top: {{ card.extra.map.top }}%"></span>
+  </a>
+  {% endif %}
+  {% set vals = {"subject": card.subject, "subject_id": card.subject_id, "kind": card.kind} %}
+  {% if card.form == "date" %}
+  <form hx-post="/decide/date" hx-target="closest article" hx-swap="outerHTML">
+    <input type="hidden" name="subject_id" value="{{ card.subject_id }}">
+    <button name="answer" value="accept" data-key="a">{{ card.proposal.label }}</button>
+    <button name="answer" value="keep" data-key="k">Dates are right</button>
+    <label>Date <input type="datetime-local" name="date"></label>
+    <button name="answer" value="date">Use this date</button>
+    <label>Year <input type="number" name="year" min="1900" max="2100"></label>
+    <button name="answer" value="year">Year only (1 July)</button>
+    <label>Shift by hours <input type="number" step="any" name="offset_hours"
+      value="{{ card.extra.offset_hours if card.extra.offset_hours is not none else '' }}"></label>
+    <button name="answer" value="shift">Shift the batch</button>
+  </form>
+  {% elif card.form == "best-shot" %}
+  {% set kept = (card.decision or card.proposal.value)["keep"] %}
+  <form hx-post="/decide/best-shot" hx-target="closest article" hx-swap="outerHTML">
+    <input type="hidden" name="subject_id" value="{{ card.subject_id }}">
+    {% for member in card.members %}{% if member.role != "motion" %}
+    <label><input type="checkbox" name="keep" value="{{ member.name }}"{% if member.name in kept %} checked{% endif %}> {{ loop.index }}</label>
+    {% endif %}{% endfor %}
+    <button data-key="s">Save the picks</button>
+  </form>
+  <button hx-post="/decide" hx-target="closest article" hx-swap="outerHTML" data-key="a"
+          hx-vals='{{ dict(vals, value=as_json(card.proposal.value)) | tojson }}'>{{ card.proposal.label }}</button>
+  {% else %}
+  <div class="answers">
+    {% for option in [card.proposal] + card.options | list %}
+    <button hx-post="/decide" hx-target="closest article" hx-swap="outerHTML"
+            {% if option.key %}data-key="{{ option.key }}"{% endif %}
+            hx-vals='{{ dict(vals, value=as_json(option.value)) | tojson }}'
+            {% if card.decision == option.value %}class="chosen"{% endif %}>{{ option.label }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if card.decision is not none %}<p class="answer">Answered: {{ as_json(card.decision) }}</p>{% endif %}
+</article>

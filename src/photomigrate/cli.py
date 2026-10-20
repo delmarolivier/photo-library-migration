@@ -1,5 +1,6 @@
 """Command-line entry point: `photomigrate`."""
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -28,6 +29,7 @@ from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.ingest.takeout import TakeoutError
+from photomigrate.review.app import create_app, serve
 from photomigrate.runner import (
     DEFAULT_CATALOGUE,
     DEFAULT_PLAN_DIR,
@@ -36,6 +38,7 @@ from photomigrate.runner import (
     render_result,
     run_stage,
 )
+from photomigrate.safety import ReadOnlyGuard
 from photomigrate.text_regions import text_reader
 from photomigrate.timeline import TimelineError, load_timeline
 
@@ -252,6 +255,30 @@ def analyse(
         raise typer.Exit(code=1) from exc
 
 
+DEFAULT_THUMBS = Path("data/thumbs")
+
+
+@app.command()
+def review(
+    ctx: typer.Context,
+    port: Annotated[int, typer.Option(help="Port on 127.0.0.1.")] = 8765,
+    takeout: Annotated[
+        Path | None, typer.Option(file_okay=False, help="The Takeout folder, for thumbnails.")
+    ] = None,
+    library: Annotated[
+        Path | None, typer.Option(help="The .photoslibrary, for thumbnails (read-only).")
+    ] = None,
+    thumbs: Annotated[Path, typer.Option(help="Where thumbnails are cached.")] = DEFAULT_THUMBS,
+) -> None:
+    """Local review gallery on 127.0.0.1: answer each queue; answers go to the catalogue at
+    once. Nothing is imported or deleted here."""
+    settings: Settings = ctx.obj
+    gallery = create_app(settings.catalogue, thumbs=thumbs, takeout=takeout, library=library)
+    typer.echo(f"Review gallery: http://127.0.0.1:{port} (Ctrl-C to stop).")
+    with ReadOnlyGuard(library) if library is not None else nullcontext():
+        serve(gallery, port)
+
+
 def warn_missing_originals(missing: list[Action], console: Console, limit: int = 20) -> None:
     """List the items whose originals are only in iCloud, so they are not silently skipped."""
     if not missing:
@@ -268,7 +295,6 @@ def warn_missing_originals(missing: list[Action], console: Console, limit: int =
 
 
 _STAGES = {
-    "review": "Local review gallery; decisions are stored in the catalogue.",
     "import": "Import approved items into Photos (dry-run unless --apply).",
     "report": "Reconciliation report: every Google item accounted for.",
 }
