@@ -50,8 +50,46 @@ class QualityConfig:
 
 
 @dataclass(frozen=True)
+class BestShotWeights:
+    """How much each score counts in a shot's composite. Only their ratios matter, and a
+    score some shot in the group lacks is left out for the whole group."""
+
+    sharpness: float = 0.3
+    exposure: float = 0.15
+    faces: float = 0.2
+    """Apple Vision's face capture quality (macOS)."""
+    eyes_open: float = 0.2
+    """The share of faces with both eyes open (macOS)."""
+    aesthetic: float = 0.15
+    """Apple's overall aesthetic score (iCloud items only)."""
+
+    def __post_init__(self) -> None:
+        if not any(getattr(self, name) > 0 for name in self.names()):
+            raise ConfigError("at least one 'best_shot.weights' setting must be above 0")
+
+    @classmethod
+    def names(cls) -> tuple[str, ...]:
+        return tuple(f.name for f in dataclasses.fields(cls))
+
+
+@dataclass(frozen=True)
+class BestShotConfig:
+    window_seconds: float = 120.0
+    """Shots in one group are all taken within this long of the group's first."""
+    min_similarity: float = 0.94
+    """Cosine similarity of open_clip image embeddings, from -1 to 1. On the real sample, most
+    pairs above 0.94 share their framing; below 0.92, most are other compositions."""
+    weights: BestShotWeights = field(default_factory=BestShotWeights)
+
+    def __post_init__(self) -> None:
+        if self.min_similarity > 1:
+            raise ConfigError("'best_shot.min_similarity' must be at most 1")
+
+
+@dataclass(frozen=True)
 class Config:
     quality: QualityConfig = field(default_factory=QualityConfig)
+    best_shot: BestShotConfig = field(default_factory=BestShotConfig)
 
 
 def load_config(path: Path | None) -> Config:

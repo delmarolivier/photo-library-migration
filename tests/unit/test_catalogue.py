@@ -593,3 +593,32 @@ def test_quality_flags_are_replaced_as_a_set(cat: Catalogue, path: Path) -> None
 def test_quality_flags_belong_to_an_item(cat: Catalogue) -> None:
     with pytest.raises(sqlite3.IntegrityError):
         cat.set_quality_flags(999, {"blurry": 1.0})
+
+
+def test_v10_adds_embeddings_and_faces_not_yet_measured(tmp_path: Path) -> None:
+    path = tmp_path / "v9.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:9])
+    conn.execute(
+        "INSERT INTO items (id, source, source_key, kind, created_at, updated_at)"
+        " VALUES (1, 'google', 'a', 'photo', 't', 't')"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.item(1).embedding is None
+        assert catalogue.item(1).faces is None
+
+
+def test_embeddings_and_faces_are_stored_and_unchanged_ones_not_rewritten(
+    cat: Catalogue, path: Path
+) -> None:
+    measured = PHOTO.replace(embedding=b"\x00\x3c" * 4, faces="[]")
+    item_id = cat.upsert_item(measured)
+    before = dump(path)
+
+    cat.upsert_item(measured)
+
+    assert dump(path) == before
+    assert cat.item(item_id).embedding == b"\x00\x3c" * 4
+    assert cat.item(item_id).faces == "[]"

@@ -29,3 +29,26 @@ black_below_brightness = 12.0
 static_below_motion = 2.0
 # Pixels on the short side.
 tiny_below_short_side = 240
+
+# Best shot (photomigrate analyse). Similar shots are grouped, ranked by a weighted score,
+# and the top two of each group are kept; the rest are proposed for "To Delete" and the
+# review confirms each group.
+
+[best_shot]
+# Every shot in a group is taken within this many seconds of the group's first shot,
+window_seconds = 120.0
+# and is at least this similar to another shot in it (cosine similarity of open_clip image
+# embeddings, from -1 to 1). On the real sample most pairs above 0.94 share their framing;
+# lower values also group other compositions of the same event.
+min_similarity = 0.94
+
+[best_shot.weights]
+# Only the ratios matter. A score that some shot in a group lacks (no faces measured, no
+# Apple score for a Google item) is left out for that whole group.
+sharpness = 0.3
+exposure = 0.15
+# Apple Vision face capture quality, and the share of faces with both eyes open (macOS).
+faces = 0.2
+eyes_open = 0.2
+# Apple's overall aesthetic score (iCloud items only).
+aesthetic = 0.15

@@ -11,8 +11,12 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
+from photomigrate.embedding import from_bytes
+from photomigrate.faces import faces_from_json
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.runner import RunResult, run_stage
+from photomigrate.testing.embedder import ThumbnailEmbedder
+from photomigrate.testing.faces import ONE_FACE, FixedFaces
 from photomigrate.testing.takeout import TakeoutBuilder, TakeoutManifest, standard_takeout
 
 ZONE = ZoneInfo("Europe/Paris")
@@ -363,3 +367,39 @@ def test_google_videos_get_a_signature_and_a_bitrate(applied) -> None:  # type: 
     assert clip.bitrate is not None
     assert clip.bitrate > 0
     assert stored[f"{ROOT}/Photos from 2019/IMG_1001.JPG"].video_signature is None
+
+
+def test_without_an_embedder_or_face_reader_nothing_of_either_is_stored(applied) -> None:  # type: ignore[no-untyped-def]
+    _, tmp, _, _ = applied
+
+    assert all(row.embedding is None and row.faces is None for row in items(tmp).values())
+
+
+def test_photos_get_an_embedding_and_faces_from_the_stage_readers(tmp_path: Path) -> None:
+    builder = TakeoutBuilder(seed=4)
+    when = datetime(2021, 6, 1, 12, 0, tzinfo=UTC)
+    builder.photo("Photos from 2021", "a.jpg", taken=when)
+    builder.video("Photos from 2021", "b.mp4", taken=when)
+    builder.write_zips(tmp_path / "takeout")
+    faces = FixedFaces()
+
+    with IngestStage(
+        tmp_path / "takeout",
+        tmp_path / "work",
+        zone=ZONE,
+        embedder=ThumbnailEmbedder(),
+        faces=faces,
+    ) as stage:
+        run_stage(
+            stage, catalogue_path=tmp_path / "catalogue.sqlite", plan_dir=tmp_path / "plans",
+            apply=True,
+        )  # fmt: skip
+
+    stored = items(tmp_path)
+    photo = stored["Takeout/Google Photos/Photos from 2021/a.jpg"]
+    video = stored["Takeout/Google Photos/Photos from 2021/b.mp4"]
+    assert photo.embedding is not None
+    assert from_bytes(photo.embedding).shape == (256,)
+    assert faces_from_json(photo.faces) == list(ONE_FACE)
+    assert (video.embedding, video.faces) == (None, None)
+    assert len(faces.seen) == 1, "videos are not read for faces"

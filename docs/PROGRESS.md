@@ -2,10 +2,12 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M3-01] CLA-83 (quality scoring).
-- Next issue: [M3-02] CLA-84 (best-shot selection).
+- Last completed issue: [M3-02] CLA-84 (best-shot picker).
+- Next issue: [M3-03] CLA-85 (date audit).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
+  - Best shot: `min_similarity` defaults to 0.94, measured on the sample (DESIGN, "Best
+    shot"). Please judge the groups in the review gallery (M3-06); lower groups more.
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
     download the 12 Takeout parts onto it before the Google links expire.
   - Before the first real `index` (CLAUDE.md rule 10):
@@ -15,6 +17,24 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M3-02
+- Ingest and index now embed every photo with open_clip (ViT-B-32, LAION-2B, MPS) and read
+  faces with Apple Vision (capture quality) plus Core Image (eyes closed), from the same
+  decode. Catalogue v10: `items.embedding` (float16) and `items.faces` (JSON, NULL = not
+  measured). torch comes from the CPU wheel index on Linux.
+- `analyse.best_shot`: groups within a 2-minute window by embedding similarity, ranks on
+  sharpness, exposure, faces, eyes open and Apple's aesthetic score (weights in
+  `[best_shot.weights]`, only scores every shot has), keeps the top two, proposes the rest
+  for "To Delete" (`best-shot` groups). Without Vision, faces are left out.
+- Tests never download the model: `ClipEmbedder` runs with random weights, grouping tests use
+  `testing.embedder.ThumbnailEmbedder`, and an autouse fixture gives the CLI that stand-in.
+  Vision is tested on the osxphotos test library.
+- Real sample (/tmp only): ingest 4 min 43 s with CLIP and Vision. 216 groups, 351 shots
+  proposed at the 0.94 default (661 at 0.90). See DESIGN for the measurements.
+- Tests: 796, 100%.
+- Handoff: the review gallery (M3-06) should show each best-shot group ranked, with the
+  score parts from the group details, and let Delmar confirm or swap the kept two.
+
 ### 2026-10-20: session 1 (continued): M3-01
 - `photomigrate.quality` measures photos (sharpness, exposure, contrast, size) and videos
   (brightness, motion) at ingest and index: one decode per photo for hashes and metrics, one

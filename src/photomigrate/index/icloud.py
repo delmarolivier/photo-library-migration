@@ -24,10 +24,12 @@ from types import TracebackType
 from typing import Any, Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem, Kind
+from photomigrate.embedding import Embedder
+from photomigrate.faces import FaceReader
 from photomigrate.hashing import bitrate, sha256_file
 from photomigrate.ingest.exif import Embedded, ExifTool
 from photomigrate.quality import (
-    PhotoMetrics,
+    PhotoMeasurement,
     VideoMetrics,
     as_json,
     measure_photo,
@@ -97,8 +99,16 @@ def _clone(source: Path, dest: Path) -> None:
 class IndexStage:
     name = "index"
 
-    def __init__(self, library: Path) -> None:
+    def __init__(
+        self,
+        library: Path,
+        *,
+        embedder: Embedder | None = None,
+        faces: FaceReader | None = None,
+    ) -> None:
         self.library = library
+        self.embedder = embedder
+        self.faces = faces
         self.read_only = ReadOnlyGuard(library)
         self._exiftool: ExifTool | None = None
         self._shadow: tempfile.TemporaryDirectory[str] | None = None
@@ -151,10 +161,11 @@ class IndexStage:
         details = action.details
         kind = cast(Kind, details["kind"])
         flags = {str(flag) for flag in cast(list[str], details["flags"])}
-        sha256 = phash = dhash = fine = None
+        sha256 = None
+        photo = PhotoMeasurement()
         signature: list[str] | None = None
         rate: int | None = None
-        measured: PhotoMetrics | VideoMetrics | None = None
+        video: VideoMetrics | None = None
         embedded = Embedded()
         if details["original"]:
             original = self.library / str(details["original"])
@@ -163,12 +174,9 @@ class IndexStage:
                 self._exiftool = ExifTool()
             embedded = self._exiftool.read(original)
             if kind == "photo":
-                hashes, measured = measure_photo(original)
-                phash, dhash, fine = (
-                    (hashes.phash, hashes.dhash, hashes.fine) if hashes else (None,) * 3
-                )
+                photo = measure_photo(original, embedder=self.embedder, faces=self.faces)
             else:
-                signature, measured = measure_video(original, embedded.duration)
+                signature, video = measure_video(original, embedded.duration)
                 rate = bitrate(original.stat().st_size, embedded.duration)
         else:
             flags.add("original-missing")
@@ -179,9 +187,9 @@ class IndexStage:
                 kind=kind,
                 original_path=cast(str | None, details["original"]),
                 sha256=sha256,
-                phash=phash,
-                dhash=dhash,
-                phash_fine=fine,
+                phash=photo.hashes.phash if photo.hashes else None,
+                dhash=photo.hashes.dhash if photo.hashes else None,
+                phash_fine=photo.hashes.fine if photo.hashes else None,
                 width=cast(int | None, details["width"]) or embedded.width,
                 height=cast(int | None, details["height"]) or embedded.height,
                 duration=embedded.duration,
@@ -196,7 +204,9 @@ class IndexStage:
                 content_id=embedded.content_id,
                 scores=json.dumps(details["scores"], sort_keys=True),
                 timezone=cast(str | None, details["timezone"]),
-                quality=as_json(measured),
+                quality=as_json(photo.metrics or video),
+                embedding=photo.embedding,
+                faces=photo.faces,
             )
         )
         if details["date"]:

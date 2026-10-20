@@ -2,6 +2,71 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Best shot (M3-02)
+
+`photomigrate analyse` runs `best-shot` (`analyse.best_shot`) last, after dedupe and quality.
+
+- **Measured at ingest and index**, from the decode already made for hashes and metrics
+  (catalogue v10, `items.embedding` and `items.faces`; `NULL` means not measured):
+  - **embedding** (`photomigrate.embedding`): open_clip `ViT-B-32` with the
+    `laion2b_s34b_b79k` weights, a unit vector of 512 values stored as float16 (1 KB). The
+    weights (about 600 MB) are downloaded on first use; the model runs on MPS when there is
+    one. Vectors from different models can't be compared, so a model change means measuring
+    again.
+  - **faces** (`photomigrate.faces`, macOS): Vision's `VNDetectFaceCaptureQualityRequest` gives
+    each face a capture quality (0 to 1). Vision has no eye-state classifier, so Core Image's
+    `CIDetector` (`CIDetectorEyeBlink`) says whether the eyes are closed; its faces are
+    matched to Vision's by centre. A picture Vision can't read is left unmeasured rather than
+    stopping ingest. On Linux there is no face reader and `faces` stays `NULL`.
+- **Who takes part:** photos with an embedding and a capture time (EXIF, else the Photos date,
+  else the date ingest plans to write). Left out: Google edits and creations, and photos
+  proposed as another's duplicate (dedupe keeps one copy; best-shot ranks that one).
+- **Groups:** shots in time order; each joins the open group holding the shot it is most like,
+  if that cosine similarity is at least `min_similarity`, else it starts a group. A group is
+  open for `window_seconds` (default 120) after its first shot, so all its pairs are within
+  the window, and a long series of one view splits into several groups. Times compare as
+  wall-clock time (any offset dropped): shots of one moment come from one camera.
+- **Scores** (each 0 to 1), and their **weights** (config `[best_shot.weights]`):
+
+  | Score | What | Weight |
+  |---|---|---|
+  | `sharpness` | sharpness over the sharpest in the group | 0.3 |
+  | `exposure` | 1 − distance of the mean from mid-grey − clipped share | 0.15 |
+  | `faces` | mean Vision capture quality (0 with no face) | 0.2 |
+  | `eyes_open` | share of faces with both eyes open (unknown counts ½; 0 with no face) | 0.2 |
+  | `aesthetic` | Apple's overall aesthetic score (iCloud only) | 0.15 |
+
+  A shot's score is the weighted mean of the scores **every** shot in its group has, so a group
+  is always compared on the same terms. The face scores count only if every shot was read for
+  faces and one has a face, so without Vision (Linux) ranking falls back to the other scores.
+- **Keep the top two** (Delmar's decision, a constant, not a setting). Ties go to higher
+  resolution, then iCloud, then the key, so the ranking doesn't depend on input order.
+- **Stored as proposals:** `groups(kind='best-shot')`, members `keep` / `to-delete` in rank
+  order, with a Live Photo still's clip right after it as `motion`. Details: the scores used,
+  each shot's score and parts, and the two kept. Pairs are stored too (both `keep`), so review
+  can show them. Stale groups are retired; no `decisions` are written; review (M3-06) confirms.
+- **Tests** never download the weights. `ClipEmbedder` runs with random weights; grouping
+  tests use `testing.embedder.ThumbnailEmbedder` (a centred 16x16 thumbnail), and an autouse
+  fixture gives the CLI that stand-in. Vision is tested on osxphotos' test library photos
+  (a portrait, a group, a blink, tulips).
+- **Linux CI** installs torch's CPU wheels (`[tool.uv.sources]`), not the CUDA ones.
+- **On the real sample** (2026-10-20, read-only, into /tmp; 3,282 photos, 1,306 of them
+  eligible after edits and duplicates):
+  - Ingest took 4 min 43 s instead of 80 s: CLIP (MPS) and Vision add about 60 ms a photo.
+  - Faces: 3,273 photos have at least one (it is a people album), 4,586 faces in all. Core
+    Image calls 17% of them closed-eyed, and that goes with Vision's quality: 33% below 0.3,
+    12% from 0.3 to 0.5, none above 0.5.
+  - Similarity within 2 minutes is a continuum (5,993 pairs, most from 0.86 to 0.96), so the
+    fine pHash was used as a proxy for "same framing" (distance ≤ 100 of 256). Pairs sharing
+    their framing: 10–26% from 0.86 to 0.92, about 40% from 0.92 to 0.94, 64–68% from 0.94 to
+    0.96, 80% and more above 0.96. Below 0.94 the links are mostly other compositions of the
+    same event, so **`min_similarity` defaults to 0.94**.
+  - Proposed for "To Delete" by threshold: 661 at 0.90, 507 at 0.92, 351 at 0.94, 242 at 0.95,
+    142 at 0.96. At 0.94: 216 groups (88 pairs; the largest has 18), 432 kept. Every group was
+    ranked on sharpness, exposure, faces and eyes (no Apple scores in a Google-only sample).
+    16% of the kept shots have a closed-eye face, against 27% of the proposed ones.
+  - The threshold still needs Delmar's eye in the review gallery (M3-06).
+
 ## Quality flags (M3-01)
 
 Ingest and index measure every item once, while the file is at hand (`photomigrate.quality`,
@@ -248,7 +313,7 @@ Tables (v1):
 |---|---|
 | `items` | one row per Google or iCloud item, identified by `(source, source_key)` (the Takeout path or Photos UUID): paths, sha256, perceptual hashes, size, duration, GPS, title, description, favourite, flags (a JSON array) |
 | `date_candidates` | one value per `(item, source)`. Sources: `exif`, `quicktime`, `sidecar-taken`, `sidecar-created`, `filename`, `mtime`, `icloud`, `user`. Naive ISO values mean local time with an unknown offset. |
-| `groups`, `group_members` | `duplicate`, `best-shot`, `date-batch`, `live-pair` groups, with a member role and rank |
+| `groups`, `group_members` | `duplicate`, `best-shot`, `date-batch`, `live-pair`, `edit-pair` groups, with a member role and rank |
 | `decisions` | the user's answers per item or group and kind (import, keep, date…) |
 | `stage_runs`, `actions` | the action log: every applied run and each action's key, status and error |
 

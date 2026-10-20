@@ -222,6 +222,13 @@ CREATE TABLE quality_flags (
 );
 """
 
+SCHEMA_V10 = """
+-- Best shot: an open_clip image embedding (float16 bytes, see photomigrate.embedding) and the
+-- faces Apple Vision found (JSON, see photomigrate.faces). NULL means not measured.
+ALTER TABLE items ADD COLUMN embedding BLOB;
+ALTER TABLE items ADD COLUMN faces TEXT;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -232,6 +239,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(7, "video signatures and bitrates", SCHEMA_V7),
     Migration(8, "edit pairs", SCHEMA_V8),
     Migration(9, "quality", SCHEMA_V9),
+    Migration(10, "embeddings and faces", SCHEMA_V10),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -318,6 +326,8 @@ class CatalogueItem:
     video_signature: str | None = None
     bitrate: int | None = None
     quality: str = "{}"
+    embedding: bytes | None = None
+    faces: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
