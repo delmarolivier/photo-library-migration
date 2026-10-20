@@ -32,7 +32,7 @@ def test_no_arguments_shows_help() -> None:
     assert "ingest" in result.output
 
 
-@pytest.mark.parametrize("stage", STAGES)
+@pytest.mark.parametrize("stage", [s for s in STAGES if s != "ingest"])
 def test_stub_stage_reports_not_implemented_and_fails(stage: str) -> None:
     result = runner.invoke(app, [stage])
 
