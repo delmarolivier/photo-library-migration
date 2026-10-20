@@ -7,8 +7,22 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from photomigrate.hashing import ImageHashes, hamming, image_hashes, sha256_file
-from photomigrate.testing.media import Exif, encode_image, synthetic_image
+from photomigrate.hashing import (
+    ImageHashes,
+    hamming,
+    image_hashes,
+    sha256_file,
+    signature_distance,
+    video_signature,
+)
+from photomigrate.testing.media import (
+    Exif,
+    encode_image,
+    encode_video,
+    reencode_video,
+    synthetic_image,
+    video_frames,
+)
 
 
 def write(path: Path, data: bytes) -> Path:
@@ -120,3 +134,59 @@ def test_the_fine_hash_separates_crops_from_copies(tmp_path: Path) -> None:
     assert crop is not None
     assert hamming(original.fine, copy.fine) <= 12
     assert hamming(original.fine, crop.fine) > 12
+
+
+def clip(tmp_path: Path, name: str, data: bytes) -> Path:
+    return write(tmp_path / name, data)
+
+
+def test_video_signatures_sample_frames_across_the_clip(tmp_path: Path) -> None:
+    path = clip(
+        tmp_path, "a.mp4", encode_video(video_frames(1, seconds=2.0, size=(128, 96)), "mp4")
+    )
+
+    signature = video_signature(path, duration=2.0, frames=8)
+
+    assert signature is not None
+    assert len(signature) == 8
+    assert all(len(frame) == 16 for frame in signature)
+    assert video_signature(path, duration=2.0, frames=8) == signature
+
+
+def test_reencoded_and_downscaled_copies_have_close_signatures(tmp_path: Path) -> None:
+    original = encode_video(video_frames(2, seconds=2.0, size=(128, 96)), "mp4")
+    copy = reencode_video(original, "mov", scale=(64, 48), crf=38)
+
+    a = video_signature(clip(tmp_path, "a.mp4", original), duration=2.0)
+    b = video_signature(clip(tmp_path, "b.mov", copy), duration=2.0)
+
+    assert a is not None
+    assert b is not None
+    assert signature_distance(a, b) <= 4
+
+
+def test_different_clips_of_the_same_length_are_far_apart(tmp_path: Path) -> None:
+    a = video_signature(
+        clip(tmp_path, "a.mp4", encode_video(video_frames(4, seconds=2.0), "mp4")), duration=2.0
+    )
+    b = video_signature(
+        clip(tmp_path, "b.mp4", encode_video(video_frames(5, seconds=2.0), "mp4")), duration=2.0
+    )
+
+    assert a is not None
+    assert b is not None
+    assert signature_distance(a, b) > 12
+
+
+def test_signatures_need_a_duration_and_a_decodable_video(tmp_path: Path) -> None:
+    path = clip(tmp_path, "a.mp4", encode_video(video_frames(1), "mp4"))
+
+    assert video_signature(path, duration=None) is None
+    assert video_signature(path, duration=0) is None
+    assert video_signature(clip(tmp_path, "junk.mov", b"not a video"), duration=1.0) is None
+
+
+def test_signature_distance_compares_aligned_frames() -> None:
+    assert signature_distance(["00", "ff"], ["00", "ff"]) == 0
+    assert signature_distance(["00", "ff"], ["0f", "ff", "00"]) == 2
+    assert signature_distance([], ["00"]) == 64
