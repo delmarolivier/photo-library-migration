@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from photomigrate import safety
 from photomigrate.safety import ForbiddenPathError, ReadOnlyGuard, announce_write
 
 LIB = Path("/photomigrate-fake/Library.photoslibrary")
@@ -111,3 +112,23 @@ def test_relative_paths_inside_the_tree_are_judged_by_the_cwd(
         guard.check("open", ("x.txt", "w", os.O_WRONLY | os.O_CREAT))
     monkeypatch.chdir(tmp_path)
     guard.check("open", ("x.txt", "w", os.O_WRONLY | os.O_CREAT))
+
+
+@pytest.mark.parametrize("database", [":memory:", object()])
+def test_in_memory_and_odd_databases_are_not_writes_to_the_tree(
+    guard: ReadOnlyGuard, database: object
+) -> None:
+    guard.check("sqlite3.connect", (database,))
+
+    assert guard.violations == []
+
+
+def test_the_dispatcher_consults_read_only_guards(
+    guard: ReadOnlyGuard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CPython pauses tracing inside audit hooks, so call the dispatcher directly for coverage.
+    monkeypatch.setattr(safety, "_active_guards", [])
+    monkeypatch.setattr(safety, "_read_only_guards", [guard])
+
+    with pytest.raises(ForbiddenPathError):
+        safety._audit("photomigrate.write", (str(DB),))

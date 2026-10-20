@@ -18,7 +18,7 @@ from typing import Any, Self
 import exiftool
 from exiftool.exceptions import ExifToolException
 
-from photomigrate.safety import announce_path
+from photomigrate.safety import announce_path, announce_write
 
 EXIF_PHOTOS = frozenset(
     {".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff", ".dng", ".webp"}
@@ -272,7 +272,7 @@ class ExifTool:
         if dest.exists():
             raise MetadataError(f"working copy already exists: {dest}")
         announce_path(source)
-        announce_path(dest)
+        announce_write(dest)
         try:
             self._tool.set_tags(
                 [str(source)], tags=_tags(source.suffix.lower(), plan), params=["-o", str(dest)]
