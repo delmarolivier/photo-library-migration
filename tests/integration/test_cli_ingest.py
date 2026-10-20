@@ -41,7 +41,8 @@ def test_ingest_apply_catalogues_every_item(
     result = invoke(tmp_path, str(standard_takeout_zips.zips[0].parent), "--apply")
 
     assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
-    assert f"Applied {len(standard_takeout_zips.items)} actions" in result.output  # type: ignore[attr-defined]
+    expected = len(standard_takeout_zips.items) + len(standard_takeout_zips.albums)
+    assert f"Applied {expected} actions" in result.output  # type: ignore[attr-defined]
     assert (tmp_path / "catalogue.sqlite").exists()
 
 

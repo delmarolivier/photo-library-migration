@@ -135,6 +135,7 @@ ALTER TABLE items ADD COLUMN metadata_plan TEXT NOT NULL DEFAULT '{}';
 
 SCHEMA_V3 = """
 -- Albums, the items in them, extra Takeout locations of one item, and keywords.
+ALTER TABLE items ADD COLUMN google_url TEXT;
 CREATE TABLE albums (
     id          INTEGER PRIMARY KEY,
     source      TEXT NOT NULL CHECK (source IN ('google', 'icloud')),
@@ -227,6 +228,7 @@ class CatalogueItem:
     favorite: bool = False
     flags: frozenset[str] = field(default_factory=frozenset)
     metadata_plan: str = "{}"
+    google_url: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:

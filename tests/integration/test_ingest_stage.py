@@ -303,3 +303,30 @@ def test_the_same_bytes_under_a_different_google_item_stay_separate(tmp_path: Pa
     stored = items(tmp_path)
     assert len(stored) == 2
     assert "same-bytes-as-another-item" in stored[f"{ROOT}/Holiday/IMG_9.JPG"].flags
+
+
+def test_an_album_with_broken_metadata_is_named_after_its_folder(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=9)
+    b.photo("Road trip", "IMG_1.JPG", taken=datetime(2019, 7, 1, tzinfo=UTC))
+    b.other_product("Google Photos/Road trip/metadata.json", b"{")
+    b.write_zips(tmp_path / "in")
+
+    ingest(tmp_path / "in", tmp_path, apply=True)
+
+    with Catalogue.open(tmp_path / "catalogue.sqlite") as catalogue:
+        assert [a.title for a in catalogue.albums()] == ["Road trip"]
+
+
+def test_a_copy_in_a_plain_folder_is_recorded_without_an_album(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=10)
+    photo = b.photo("Photos from 2019", "IMG_1.JPG", taken=datetime(2019, 7, 1, tzinfo=UTC))
+    b.copy_to(photo, "Photos from 2020")
+    b.write_zips(tmp_path / "in")
+
+    ingest(tmp_path / "in", tmp_path, apply=True)
+
+    with Catalogue.open(tmp_path / "catalogue.sqlite") as catalogue:
+        (item,) = catalogue.items("google")
+        assert item.id is not None
+        assert catalogue.copies_of(item.id) == [f"{ROOT}/Photos from 2020/IMG_1.JPG"]
+        assert catalogue.albums() == []
