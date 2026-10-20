@@ -15,13 +15,16 @@ from photomigrate.ingest.sidecars import (
     SidecarData,
     SidecarError,
     is_album_metadata,
+    is_non_sidecar_json,
     match_folder,
+    parse_album_metadata,
     parse_sidecar,
 )
 from photomigrate.testing.takeout import (
     EDITED_SUFFIXES,
     Geo,
     TakeoutManifest,
+    album_metadata,
     duplicate_name,
     edited_name,
     sidecar_name,
@@ -116,17 +119,43 @@ def test_sidecar_data_round_trips_through_plain_dicts() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "expected"),
+    ("name", "album", "not_a_sidecar"),
     [
-        ("metadata.json", True),
-        ("métadonnées.json", True),
-        ("Metadaten.json", True),
-        ("print-subscriptions.json", True),
-        ("IMG_1001.JPG.json", False),
+        ("metadata.json", True, True),
+        ("métadonnées.json", True, True),
+        ("Metadaten.json", True, True),
+        ("print-subscriptions.json", False, True),
+        ("IMG_1001.JPG.json", False, False),
     ],
 )
-def test_album_metadata_and_other_known_json(name: str, expected: bool) -> None:
-    assert is_album_metadata(name) is expected
+def test_album_metadata_and_other_known_json(name: str, album: bool, not_a_sidecar: bool) -> None:
+    assert is_album_metadata(name) is album
+    assert is_non_sidecar_json(name) is not_a_sidecar
+
+
+def test_the_google_photos_url_identifies_the_item() -> None:
+    data = parse_sidecar(encoded(url="https://photos.google.com/photo/AF1QipABC"))
+
+    assert data.url == "https://photos.google.com/photo/AF1QipABC"
+    assert SidecarData.from_dict(data.to_dict()).url == data.url
+
+
+def test_album_metadata_title_description_and_sharing() -> None:
+    shared = parse_album_metadata(
+        json.dumps(
+            album_metadata("Été 2019", description="Vacances 🌞", comments=[("Bob", UPLOADED)])
+        ).encode()
+    )
+    plain = parse_album_metadata(json.dumps(album_metadata("Best of")).encode())
+
+    assert (shared.title, shared.description, shared.shared) == ("Été 2019", "Vacances 🌞", True)
+    assert (plain.title, plain.description, plain.shared) == ("Best of", "", False)
+
+
+@pytest.mark.parametrize("payload", [b"{", b"[]", b'{"description": "no title"}'])
+def test_broken_album_metadata_raises(payload: bytes) -> None:
+    with pytest.raises(SidecarError):
+        parse_album_metadata(payload)
 
 
 # --- matching examples ---------------------------------------------------------------------------
