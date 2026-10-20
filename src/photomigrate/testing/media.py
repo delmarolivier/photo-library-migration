@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 import pillow_heif
-from PIL import ExifTags, Image, ImageChops, ImageDraw
+from PIL import ExifTags, Image, ImageChops, ImageDraw, ImageFont
 
 pillow_heif.register_heif_opener()
 
@@ -76,6 +76,45 @@ def synthetic_photo(
     grain = random.Random(seed).randbytes(size[0] * size[1])
     noise = Image.frombytes("L", size, grain).convert("RGB")
     return Image.blend(synthetic_image(seed, size, jitter=jitter), noise, 0.12)
+
+
+def text_page(
+    lines: Sequence[str], size: tuple[int, int] = (600, 900), font_size: int = 28
+) -> Image.Image:
+    """Dark lines of text on white paper: a receipt or a scanned document."""
+    page = Image.new("RGB", size, "white")
+    draw = ImageDraw.Draw(page)
+    font = ImageFont.load_default(size=font_size)
+    step = max(size[1] // (len(lines) + 1), font_size + 4)
+    for row, line in enumerate(lines):
+        draw.text((size[0] // 15, size[1] // 25 + row * step), line, fill="black", font=font)
+    return page
+
+
+def captioned(image: Image.Image, *, top: str = "", bottom: str = "") -> Image.Image:
+    """A meme: big outlined white captions across the top and bottom of a picture."""
+    result = image.copy()
+    draw = ImageDraw.Draw(result)
+    font = ImageFont.load_default(size=result.height // 8)
+    for text, y in ((top, result.height // 30), (bottom, result.height * 5 // 6)):
+        if text:
+            draw.text(
+                (result.width // 13, y), text, fill="white", font=font, stroke_width=4,
+                stroke_fill="black",
+            )  # fmt: skip
+    return result
+
+
+def with_sign(image: Image.Image, text: str) -> Image.Image:
+    """A camera shot with a small sign in it: a little text in a corner."""
+    result = image.copy()
+    draw = ImageDraw.Draw(result)
+    width, height = result.size
+    box = (width * 3 // 4, height // 8, width * 19 // 20, height // 8 + height // 10)
+    draw.rectangle(box, fill="white")
+    font = ImageFont.load_default(size=height // 17)
+    draw.text((box[0] + width // 60, box[1] + height // 50), text, fill="red", font=font)
+    return result
 
 
 def video_frames(

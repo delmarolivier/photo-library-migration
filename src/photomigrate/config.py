@@ -87,9 +87,20 @@ class BestShotConfig:
 
 
 @dataclass(frozen=True)
+class ClutterConfig:
+    min_score: float = 0.5
+    """An item joins the clutter queue when its best category scores at least this (0 to 1)."""
+
+    def __post_init__(self) -> None:
+        if self.min_score > 1:
+            raise ConfigError("'clutter.min_score' must be at most 1")
+
+
+@dataclass(frozen=True)
 class Config:
     quality: QualityConfig = field(default_factory=QualityConfig)
     best_shot: BestShotConfig = field(default_factory=BestShotConfig)
+    clutter: ClutterConfig = field(default_factory=ClutterConfig)
 
 
 def load_config(path: Path | None) -> Config:

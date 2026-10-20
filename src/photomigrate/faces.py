@@ -91,7 +91,18 @@ def faces_from_json(text: str | None) -> list[Face] | None:
     ]
 
 
-def _box(rect: Any, width: float = 1.0, height: float = 1.0) -> Box:
+def vision_data(image: Image.Image) -> Any:
+    """The picture as ``NSData`` for Vision and Core Image (macOS): an uncompressed TIFF,
+    quick to write and to read. The picture is already upright."""
+    from Foundation import NSData
+
+    buffer = io.BytesIO()
+    image.convert("RGB").save(buffer, "TIFF")
+    raw = buffer.getvalue()
+    return NSData.dataWithBytes_length_(raw, len(raw))
+
+
+def box_of(rect: Any, width: float = 1.0, height: float = 1.0) -> Box:
     return (
         round(rect.origin.x / width, 4),
         round(rect.origin.y / height, 4),
@@ -115,20 +126,15 @@ class VisionFaces:
     def read(self, image: Image.Image) -> list[Face] | None:
         import Quartz
         import Vision
-        from Foundation import NSData
 
-        buffer = io.BytesIO()
-        image.convert("RGB").save(buffer, "TIFF")  # uncompressed: quick to write and to read
-        raw = buffer.getvalue()
-        data = NSData.dataWithBytes_length_(raw, len(raw))
-
+        data = vision_data(image)
         handler = Vision.VNImageRequestHandler.alloc().initWithData_options_(data, {})
         request = Vision.VNDetectFaceCaptureQualityRequest.alloc().init()
         done, _ = handler.performRequests_error_([request], None)
         if not done:  # one odd picture must not stop ingest: it is left unmeasured
             return None
         vision = [
-            (_box(face.boundingBox()), round(float(face.faceCaptureQuality()), 4))
+            (box_of(face.boundingBox()), round(float(face.faceCaptureQuality()), 4))
             for face in request.results() or ()
         ]
 
@@ -136,7 +142,7 @@ class VisionFaces:
         size = picture.extent().size
         blinks = [
             (
-                _box(face.bounds(), size.width, size.height),
+                box_of(face.bounds(), size.width, size.height),
                 face.leftEyeClosed(),
                 face.rightEyeClosed(),
             )

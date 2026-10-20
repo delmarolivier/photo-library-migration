@@ -18,6 +18,8 @@ from photomigrate.quality import (
 from photomigrate.testing.embedder import ThumbnailEmbedder
 from photomigrate.testing.faces import ONE_FACE, FixedFaces
 from photomigrate.testing.media import encode_image, encode_video, synthetic_image, video_frames
+from photomigrate.testing.text import SOME_TEXT, FixedText
+from photomigrate.text_regions import text_to_json
 
 
 def jpeg(tmp_path: Path, name: str, image: Image.Image) -> Path:
@@ -115,6 +117,15 @@ def test_the_embedding_and_faces_come_from_the_same_upright_picture(tmp_path: Pa
     assert measured.embedding == to_bytes(embedder.embed(picture.image))
     assert measured.faces == faces_to_json(ONE_FACE)
     assert [image.size for image in faces.seen] == [(1024, 768)]
+
+
+def test_text_comes_from_the_same_decode(tmp_path: Path) -> None:
+    path = jpeg(tmp_path, "a.jpg", synthetic_image(8))
+
+    measured = measure_photo(path, text=FixedText())
+
+    assert measured.text == text_to_json(SOME_TEXT)
+    assert measure_photo(path).text is None
 
 
 def test_without_an_embedder_or_face_reader_neither_is_measured(tmp_path: Path) -> None:

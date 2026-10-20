@@ -12,6 +12,7 @@ model means measuring every photo again.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 import numpy as np
@@ -27,6 +28,10 @@ DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
 class Embedder(Protocol):
     def embed(self, image: Image.Image) -> Vector:
         """A unit-length vector for the picture."""
+        ...
+
+    def embed_texts(self, texts: Sequence[str]) -> list[Vector]:
+        """Unit-length vectors for text prompts, in the pictures' space (zero-shot labels)."""
         ...
 
 
@@ -53,6 +58,7 @@ class ClipEmbedder:
         self.device = device or _best_device()
         self._model: Any = None
         self._preprocess: Any = None
+        self._tokenizer: Any = None
 
     @property
     def loaded(self) -> bool:
@@ -66,7 +72,17 @@ class ClipEmbedder:
                 self.model_name, pretrained=self.pretrained, device=self.device
             )
             self._model, self._preprocess = model.eval(), preprocess
+            self._tokenizer = open_clip.get_tokenizer(self.model_name)
         return self._model, self._preprocess
+
+    def embed_texts(self, texts: Sequence[str]) -> list[Vector]:
+        import torch
+
+        model, _ = self._load()
+        with torch.no_grad():
+            tokens = self._tokenizer(list(texts)).to(self.device)
+            vectors = model.encode_text(tokens).float().cpu().numpy()
+        return [np.asarray(v / np.linalg.norm(v), dtype=np.float32) for v in vectors]
 
     def embed(self, image: Image.Image) -> Vector:
         import torch

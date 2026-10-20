@@ -30,7 +30,7 @@ uv run photomigrate ingest /Volumes/Photos/takeout --apply --timezone Europe/Lon
 
 `ingest` and `index` also embed every photo with open_clip (for best-shot). The model's
 weights (about 600 MB) are downloaded into the Hugging Face cache the first time; on Apple
-silicon it runs on the GPU. On macOS they also read faces with Apple Vision.
+silicon it runs on the GPU. On macOS they also read faces and text with Apple Vision.
 
 ```sh
 # Read-only index of the iCloud Photos library (macOS; quit Photos first)
@@ -54,7 +54,7 @@ with their defaults. Unknown settings are errors.
 |---|---|
 | `ingest` | Catalogue every item straight from the zips: match sidecars, hash, measure quality, embed photos, read faces, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
 | `index` | Read-only index of the iCloud library: hashes, quality, embeddings, faces, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
-| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); date audit: missing, placeholder, future, conflicting and out-of-sequence dates batched by camera, folder and name, with suggestions, and the review's answers applied (accept, a date, a year, a shift); later clutter, location |
+| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); date audit: missing, placeholder, future, conflicting and out-of-sequence dates batched by camera, folder and name, with suggestions, and the review's answers applied (accept, a date, a year, a shift); clutter queue: screenshots, receipts and documents, memes, messaging forwards and Google creations, each with a score and its evidence; later location |
 | `review` | Local gallery on 127.0.0.1; decisions stored in the catalogue |
 | `import` | Dry-run by default; `--apply` imports approved items and stages removals |
 | `report` | Reconciliation report: every Google item accounted for |

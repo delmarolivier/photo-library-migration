@@ -37,6 +37,7 @@ from photomigrate.quality import (
 )
 from photomigrate.runner import Action, JSONValue
 from photomigrate.safety import ReadOnlyGuard
+from photomigrate.text_regions import TextReader
 
 
 class LibraryError(RuntimeError):
@@ -64,6 +65,7 @@ def _details(photo: Any, library: Path) -> dict[str, JSONValue]:
             ("burst", photo.burst),
             ("shared", photo.shared),
             ("cloud-asset", photo.iscloudasset),
+            ("screenshot", photo.screenshot),
         )
         if present
     }
@@ -105,10 +107,12 @@ class IndexStage:
         *,
         embedder: Embedder | None = None,
         faces: FaceReader | None = None,
+        text: TextReader | None = None,
     ) -> None:
         self.library = library
         self.embedder = embedder
         self.faces = faces
+        self.text = text
         self.read_only = ReadOnlyGuard(library)
         self._exiftool: ExifTool | None = None
         self._shadow: tempfile.TemporaryDirectory[str] | None = None
@@ -174,7 +178,9 @@ class IndexStage:
                 self._exiftool = ExifTool()
             embedded = self._exiftool.read(original)
             if kind == "photo":
-                photo = measure_photo(original, embedder=self.embedder, faces=self.faces)
+                photo = measure_photo(
+                    original, embedder=self.embedder, faces=self.faces, text=self.text
+                )
             else:
                 signature, video = measure_video(original, embedded.duration)
                 rate = bitrate(original.stat().st_size, embedded.duration)
@@ -208,6 +214,7 @@ class IndexStage:
                 quality=as_json(photo.metrics or video),
                 embedding=photo.embedding,
                 faces=photo.faces,
+                text=photo.text,
             )
         )
         if details["date"]:

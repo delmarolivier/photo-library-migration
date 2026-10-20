@@ -106,3 +106,4 @@ def test_ingest_embeds_photos_and_reads_faces_where_vision_is(
     assert all(i.embedding is not None for i in photos)
     vision = face_reader() is not None
     assert all((i.faces is not None) == vision for i in photos)
+    assert all((i.text is not None) == vision for i in photos)

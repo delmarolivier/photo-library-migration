@@ -2,6 +2,55 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Clutter (M3-04)
+
+`photomigrate analyse` runs `clutter` (`analyse.clutter`) after best-shot. Each item gets a
+score from 0 to 1 per category. If its best category reaches `[clutter] min_score` (0.5), it
+joins the **clutter queue** (catalogue v12 table `clutter`: category, score, evidence) for bulk
+review. Nothing is decided.
+
+- **Measured at ingest and index** (catalogue v12 `items.text`): Vision's
+  `VNDetectTextRectanglesRequest` finds text (without reading it) in the decode already made
+  for hashing. It's stored as a summary (`text_regions`): `regions`, `coverage` (capped at 1),
+  `tallest` (as a share of the height), and `banded` (share of regions in the top or bottom
+  30%). Index also records Photos' own `screenshot` flag.
+- **Scores** combine clues as independent evidence, `1 − Π(1 − weight)`. A camera make and model
+  in the file count against the categories a camera doesn't make:
+
+  | Category | Clues (weight) | Camera |
+  |---|---|---|
+  | `google-creation` | ingest's `google-creation` (sidecar origin AUTO) 1.0; `-MOTION`, `-MIX`, `-SMILE`, `-ANIMATION`, `-COLLAGE`, `-EFFECTS` names 0.9 | — |
+  | `screenshot` | Photos says so 0.95; a screenshot name (8 languages, screen recordings too) 0.8; a device screen size 0.5; PNG 0.3; no camera and no file date 0.2 | × 0.25 |
+  | `document` | text regions 0.7 at 12+; coverage 0.5 at 20%; white paper with 3+ regions 0.3; without Vision text, zero-shot 0.9 × p; no camera 0.15, only on top of other evidence | — |
+  | `meme` | big captions at the top or bottom 0.6; some text over a picture 0.2; a saved name (`received_`, `FB_IMG_`, `image.jpg`…) 0.3; no camera and no file date 0.2; zero-shot 0.8 × p | × 0.2 (and × 0.5 for a page of text) |
+  | `forward` | WhatsApp `-WA0001` 0.85; other messengers (`received_`, `FB_IMG_`, `signal-`, Telegram) 0.6; stripped metadata 0.2; a messaging size (long side 800…4096) 0.25 | × 0.3 |
+
+  Photographed receipts stay documents: a camera doesn't count against them. A missing camera
+  never makes a document by itself, and a street sign in a camera photo stays a photo (a
+  little text: one region, 0.5% coverage).
+- **Zero-shot fallback** (no Vision text, e.g. Linux): `ZeroShot` compares the stored open_clip
+  embedding with prompts for document, meme, screenshot and ordinary photos (softmax at
+  scale 100). Each label's probability is the sum of its prompts'. The prompts are embedded
+  once, and only if some item needs them, so on macOS the model never loads for this.
+- **Left out:** Google edits and Live Photo motion clips (they follow their original or still)
+  and proposed duplicates. Google creations are always queued, never imported automatically
+  (Delmar).
+- **Fixtures** (`testing.media`): `text_page` (a receipt), `captioned` (a meme), `with_sign`
+  (a street sign in a photo). On macOS the real Vision runs over the same Takeout as the Linux
+  test, which uses the summaries Vision gives.
+- **On the real sample** (2026-10-20, re-ingested read-only into /tmp in 4 min 55 s; two
+  cameras, iPhone 4S and 5, and 197 items without one):
+  - The first rules queued 138 Google creations (Delmar expected 130 or more), 86 documents
+    and 32 screenshots. 74 of the documents were a single "text" box 57 to 79% of the
+    picture's height: Vision boxing a textured scene. 23 of the screenshots were 1080p camera
+    videos.
+  - The fixes: drop boxes taller than 30% of the picture (no line of text is), count coverage
+    and paper only from 3 regions up, and match a screen size only for photos, at a weight that
+    needs a second clue.
+  - After the fixes (estimated from the stored summaries): 138 creations, 7 documents (the
+    surest with 8 to 11 text regions) and 7 screenshots, out of 3,308 items. No memes or
+    forwards: the album has none of their names.
+
 ## Date audit (M3-03)
 
 `photomigrate analyse` ends with `date-fixes` (`analyse.date_fixes`), then `date-audit`

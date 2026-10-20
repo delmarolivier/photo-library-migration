@@ -238,3 +238,28 @@ def test_synthetic_photos_have_fine_texture_like_a_real_picture() -> None:
     assert photo.tobytes() == synthetic_photo(3, size=(200, 100)).tobytes()
     flat = synthetic_image(3, size=(200, 100))
     assert 2 < mean_difference(photo, flat) < 30, "texture on top of the same scene"
+
+
+def test_rendered_text_fixtures() -> None:
+    page = media.text_page(["SUPERMARKET", "Milk 1.20", "TOTAL 1.20"], size=(300, 400))
+    meme = media.captioned(synthetic_image(3, (400, 300)), top="TOP TEXT", bottom="BOTTOM")
+    sign = media.with_sign(synthetic_image(4, (400, 300)), "STOP")
+
+    assert page.size == (300, 400)
+    assert ImageStat.Stat(page.convert("L")).mean[0] > 200, "dark text on white paper"
+    assert meme.size == sign.size == (400, 300)
+    assert mean_difference(meme, synthetic_image(3, (400, 300))) > 1
+    assert (
+        0
+        < mean_difference(sign, synthetic_image(4, (400, 300)))
+        < mean_difference(meme, synthetic_image(3, (400, 300)))
+    ), "a sign is a small patch of text"
+
+
+def test_a_caption_can_be_only_at_the_bottom() -> None:
+    picture = synthetic_image(3, (400, 300))
+    bottom_only = media.captioned(picture, bottom="BOTTOM")
+
+    top = (0, 0, 400, 100)
+    assert bottom_only.crop(top).tobytes() == picture.crop(top).tobytes()
+    assert bottom_only.tobytes() != picture.tobytes()

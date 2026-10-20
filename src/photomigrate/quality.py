@@ -13,8 +13,9 @@ which makes sharpness comparable across camera resolutions:
 * ``contrast``: the luminance standard deviation (near 0 means a flat frame: a pocket shot);
 * ``megapixels`` and ``short_side``, from the full-size image.
 
-The same decode gives the photo's open_clip embedding and its faces (``embedding``, ``faces``)
-when the caller passes an embedder and a face reader (``measure_photo``), for best-shot.
+The same decode gives the photo's open_clip embedding, its faces and its text regions
+(``embedding``, ``faces``, ``text_regions``) when the caller passes an embedder and readers
+(``measure_photo``), for best-shot and clutter.
 
 Videos use the frames already sampled for their signature: mean ``brightness``, and
 ``motion``, the mean absolute difference between consecutive frames.
@@ -42,6 +43,7 @@ from photomigrate.hashing import (
     sample_video,
     signature_of,
 )
+from photomigrate.text_regions import TextReader, text_to_json
 
 
 @dataclass(frozen=True)
@@ -104,13 +106,19 @@ class PhotoMeasurement:
     """As stored in the catalogue (``embedding.to_bytes``)."""
     faces: str | None = None
     """As stored in the catalogue (``faces.faces_to_json``)."""
+    text: str | None = None
+    """As stored in the catalogue (``text_regions.text_to_json``)."""
 
 
 def measure_photo(
-    path: Path, *, embedder: Embedder | None = None, faces: FaceReader | None = None
+    path: Path,
+    *,
+    embedder: Embedder | None = None,
+    faces: FaceReader | None = None,
+    text: TextReader | None = None,
 ) -> PhotoMeasurement:
-    """A photo's hashes and metrics, plus its embedding and faces when given an ``embedder``
-    and a ``faces`` reader, from one decode. All ``None`` if it cannot be decoded."""
+    """A photo's hashes and metrics, plus its embedding, faces and text when given an
+    ``embedder`` and readers, from one decode. All ``None`` if it cannot be decoded."""
     picture = open_picture(path)
     if picture is None:
         return PhotoMeasurement()
@@ -119,6 +127,7 @@ def measure_photo(
         metrics=picture_metrics(picture),
         embedding=to_bytes(embedder.embed(picture.image)) if embedder else None,
         faces=faces_to_json(faces.read(picture.image)) if faces else None,
+        text=text_to_json(text.read(picture.image)) if text else None,
     )
 
 

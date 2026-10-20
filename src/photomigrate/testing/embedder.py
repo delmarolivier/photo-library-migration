@@ -3,9 +3,13 @@
 The vector is the picture's 16x16 greyscale thumbnail, centred on its mean and scaled to unit
 length. So the same scene a moment later, blurred or darker comes out close, while different
 seeded scenes come out far apart. That is enough to test grouping, not to judge real photos.
+Text prompts get seeded random unit vectors in the same space: deterministic, meaningless.
 """
 
 from __future__ import annotations
+
+import hashlib
+from collections.abc import Sequence
 
 import numpy as np
 from PIL import Image
@@ -22,3 +26,11 @@ class ThumbnailEmbedder:
         centred = pixels - pixels.mean()
         norm = float(np.linalg.norm(centred))
         return centred / norm if norm else centred
+
+    def embed_texts(self, texts: Sequence[str]) -> list[Vector]:
+        vectors = []
+        for text in texts:
+            seed = int.from_bytes(hashlib.sha256(text.encode()).digest()[:8], "big")
+            vector = np.random.default_rng(seed).normal(size=_SIDE * _SIDE).astype(np.float32)
+            vectors.append(vector / np.linalg.norm(vector))
+        return vectors
