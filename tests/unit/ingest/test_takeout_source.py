@@ -242,3 +242,12 @@ def test_unknown_locators_raise(tmp_path: Path) -> None:
 
     with open_takeout(tmp_path / "in") as takeout, pytest.raises(KeyError):
         takeout.entry("nope.zip::Takeout/Google Photos/x.jpg")
+
+
+def test_reading_an_unknown_tree_entry_fails(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=3)
+    b.photo("Photos from 2019", "IMG_1.JPG", taken=TAKEN)
+    b.write_tree(tmp_path / "tree")
+
+    with open_takeout(tmp_path / "tree") as takeout, pytest.raises(KeyError):
+        takeout.read("Takeout/Google Photos/Photos from 2019/nope.jpg")

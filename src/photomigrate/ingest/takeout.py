@@ -7,10 +7,13 @@ as read-only originals and refuses to replace one that differs.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import zipfile
 import zlib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -41,6 +44,14 @@ def _safe(name: str) -> str:
     if path.is_absolute() or ".." in path.parts or "\\" in name:
         raise TakeoutError(f"unsafe path in the Takeout: {name!r}")
     return name
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _crc32(path: Path) -> int:
@@ -107,6 +118,39 @@ class Takeout:
                 raise KeyError(path)
             return (self.root / path).read_bytes()
         return self._zips[self._part_of[path]].read(self._where[path])
+
+    def locator(self, entry: Entry) -> str:
+        """Where the original is, relative to the Takeout folder: ``<part>::<member>``."""
+        return f"{entry.part}::{entry.path}" if entry.part else entry.path
+
+    def entry(self, locator: str) -> Entry:
+        for entry in self.entries:
+            if self.locator(entry) == locator:
+                return entry
+        raise KeyError(locator)
+
+    @contextmanager
+    def local_copy(self, entry: Entry, scratch: Path) -> Iterator[tuple[Path, str]]:
+        """A readable file with ``entry``'s bytes, and their SHA-256, for exiftool and hashing.
+
+        Zip entries are streamed into a temporary file under ``scratch``, removed afterwards.
+        Entries of an extracted tree are the originals themselves (only ever read).
+        """
+        if entry.part is None:
+            original = self.root / entry.path
+            yield original, _sha256(original)
+            return
+        with tempfile.TemporaryDirectory(dir=scratch, prefix=".entry-") as holder:
+            copy = Path(holder) / f"original{PurePosixPath(entry.path).suffix}"
+            digest = hashlib.sha256()
+            with (
+                self._zips[entry.part].open(self._where[entry.path]) as source,
+                copy.open("wb") as target,
+            ):
+                while chunk := source.read(1 << 20):
+                    digest.update(chunk)
+                    target.write(chunk)
+            yield copy, digest.hexdigest()
 
     def original(self, entry: Entry, extracted: Path) -> Path:
         """Where the untouched original of ``entry`` lives (once extracted)."""
