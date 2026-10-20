@@ -254,3 +254,12 @@ def test_rendered_text_fixtures() -> None:
         < mean_difference(sign, synthetic_image(4, (400, 300)))
         < mean_difference(meme, synthetic_image(3, (400, 300)))
     ), "a sign is a small patch of text"
+
+
+def test_a_caption_can_be_only_at_the_bottom() -> None:
+    picture = synthetic_image(3, (400, 300))
+    bottom_only = media.captioned(picture, bottom="BOTTOM")
+
+    top = (0, 0, 400, 100)
+    assert bottom_only.crop(top).tobytes() == picture.crop(top).tobytes()
+    assert bottom_only.tobytes() != picture.tobytes()
