@@ -106,3 +106,10 @@ def test_best_shot_settings_that_cannot_work_are_errors(
 ) -> None:
     with pytest.raises(ConfigError, match=re.escape(message)):
         load_config(write(tmp_path, text))
+
+
+def test_the_clutter_threshold_can_be_raised_but_not_past_one(tmp_path: Path) -> None:
+    assert Config().clutter.min_score == 0.5
+    assert load_config(write(tmp_path, "[clutter]\nmin_score = 0.7\n")).clutter.min_score == 0.7
+    with pytest.raises(ConfigError, match=re.escape("'clutter.min_score' must be at most 1")):
+        load_config(write(tmp_path, "[clutter]\nmin_score = 1.5\n"))

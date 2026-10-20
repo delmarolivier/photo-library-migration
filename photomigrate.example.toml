@@ -52,3 +52,11 @@ faces = 0.2
 eyes_open = 0.2
 # Apple's overall aesthetic score (iCloud items only).
 aesthetic = 0.15
+
+# Clutter (photomigrate analyse): screenshots, receipts and documents, memes, messaging
+# forwards and Google creations go to a bulk-review queue, each with a category, a score from
+# 0 to 1 and its evidence. Nothing is decided.
+
+[clutter]
+# An item joins the queue when its best category scores at least this.
+min_score = 0.5
