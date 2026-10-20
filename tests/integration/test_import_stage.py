@@ -201,12 +201,13 @@ def test_pending_questions_hold_items_back(setup, tmp_path: Path) -> None:  # ty
         (dup,) = catalogue.groups("duplicate")
         catalogue.set_decision("group", dup.id, "duplicate", {"reject": True})
         one = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0001.JPG") or 0
+        two = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0002.JPG") or 0
         group = catalogue.upsert_group("best-shot", "best-x", {"keep": [], "scores": {}})
-        catalogue.set_group_members(group, [(one, "keep", 0)])
+        catalogue.set_group_members(group, [(two, "keep", 0), (one, "to-delete", 1)])
 
     run_import(setup, tmp_path)
 
-    assert set(by_file(setup[2])) == {"IMG_0002.JPG", "IMG_0003.HEIC", "IMG_0005.JPG"}
+    assert set(by_file(setup[2])) == {"IMG_0003.HEIC", "IMG_0005.JPG"}
 
 
 def test_an_action_for_an_item_that_is_gone_is_an_error(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

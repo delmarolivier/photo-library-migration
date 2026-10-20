@@ -5,7 +5,7 @@ low-quality shots, review every decision in a local gallery, then import. **The 
 deletes anything**: removals go into a "To Delete" album that you clear by hand.
 
 Status: milestone 4. Every stage works: `ingest`, `index`, `analyse`, `review`, `import` and
-`report`. What's left is the real-data rehearsal (docs/RUNBOOK.md).
+`report`. What's left is the real-data rehearsal: see [docs/RUNBOOK.md](docs/RUNBOOK.md).
 Plan and task queue: Linear project "Photo Library Migration" (P-CLA-3, ClawWorks).
 
 ## Requirements

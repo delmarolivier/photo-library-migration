@@ -72,7 +72,10 @@ def _verdicts(catalogue: Catalogue) -> _Verdicts:
                 if i != keeper:
                     found.duplicate_of[i] = keeper
     for group in catalogue.groups("best-shot"):
-        shots = [i for i, role, _ in catalogue.group_members(group.id) if role != "motion"]
+        listed = catalogue.group_members(group.id)
+        if not any(role == "to-delete" for _, role, _ in listed):
+            continue  # a pair keeps both, and the review is never asked
+        shots = [i for i, role, _ in listed if role != "motion"]
         answer = catalogue.decision("group", group.id, "best-shot")
         for i in shots:
             if answer is None:

@@ -181,3 +181,11 @@ def test_an_edit_of_a_google_creation_follows_its_originals_answer(cat: Catalogu
     assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "clutter")
     cat.set_decision("item", creation, "clutter", {"reject": False})
     assert outcomes(cat)[edit].status == "import"
+
+
+def test_a_best_shot_pair_keeps_both_without_being_asked(cat: Catalogue) -> None:
+    a, b = google(cat, "IMG_1001.JPG"), google(cat, "IMG_1002.JPG")
+    group(cat, "best-shot", "best-pair", [(a, "keep"), (b, "keep")],
+          keep=[name(cat, a), name(cat, b)])  # fmt: skip
+
+    assert {outcomes(cat)[i].status for i in (a, b)} == {"import"}, "the gallery never asks"
