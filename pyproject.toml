@@ -1,0 +1,76 @@
+[project]
+name = "photomigrate"
+version = "0.1.0"
+description = "Merge Google Photos into iCloud Photos: dedupe, quality review, no auto-deletion"
+readme = "README.md"
+authors = [
+    { name = "Delmar Olivier", email = "16337113+delmarolivier@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+photomigrate = "photomigrate.cli:app"
+photomigrate-no-delete-check = "photomigrate.safety:main"
+
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.5",
+    "mypy>=2.4.0",
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.17.1",
+]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--cov=photomigrate",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=90",
+]
+markers = [
+    "macos: needs macOS (osxphotos, pyobjc, Photos); runs locally and on the macOS CI job",
+]
+xfail_strict = true
+
+[tool.coverage.run]
+branch = true
+source = ["photomigrate"]
+relative_files = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "PT", "RUF", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
