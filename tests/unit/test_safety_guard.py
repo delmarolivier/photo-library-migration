@@ -208,3 +208,23 @@ def test_rmtree_of_scratch_media_stores_is_not_blocked(
 def test_sqlite_file_uris_are_decoded_before_checking(guard: PathGuard, uri: str) -> None:
     with pytest.raises(ForbiddenPathError):
         guard.check("sqlite3.connect", (uri,))
+
+
+def test_rmtree_of_a_scratch_dir_named_like_a_forbidden_root_is_not_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "data-in").mkdir(parents=True)
+    scratch = tmp_path / "scratch"
+    (scratch / "data-in").mkdir(parents=True)
+    (scratch / "data-in" / "Timeline.json").write_text("[]")
+    monkeypatch.chdir(repo)
+    guard = PathGuard(GuardRules(forbidden_roots=(repo / "data-in",), allowed_roots=(scratch,)))
+
+    guard.activate()
+    try:
+        shutil.rmtree(scratch)
+    finally:
+        guard.deactivate()
+
+    assert guard.violations == []

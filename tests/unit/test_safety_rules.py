@@ -159,3 +159,17 @@ def test_relative_paths_inside_a_real_takeout_cwd_are_forbidden(
     rules = GuardRules(forbidden_roots=(), allowed_roots=())
 
     assert rules.is_forbidden("IMG_0001.jpg")
+
+
+def test_a_bare_name_matching_a_forbidden_root_is_judged_by_the_cwd_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # pytest's tmp cleanup passes bare names like "data-in" relative to a directory fd. Joining
+    # them to the cwd would wrongly hit <repo>/data-in. Code in tests uses absolute paths.
+    repo = tmp_path / "repo"
+    (repo / "data-in").mkdir(parents=True)
+    monkeypatch.chdir(repo)
+    rules = GuardRules(forbidden_roots=(repo / "data-in",), allowed_roots=())
+
+    assert not rules.is_forbidden("data-in")
+    assert rules.is_forbidden(repo / "data-in" / "Timeline.json")

@@ -156,13 +156,12 @@ def test_the_real_samples_folder_is_off_limits(pytester: pytest.Pytester) -> Non
     samples = pytester.path / "data-in"
     samples.mkdir()
     (samples / "Timeline.json").write_text("[]")
-    pytester.makepyfile(
+    test_file = pytester.makepyfile(
         """
-        from pathlib import Path
-
         def test_peek(pytestconfig):
             (pytestconfig.rootpath / "data-in" / "Timeline.json").open("rb")
         """
     )
 
-    run(pytester).assert_outcomes(failed=1)
+    # Name the file: collecting the whole rootdir would already trip the guard on data-in/.
+    pytester.runpytest(*PLUGIN, str(test_file)).assert_outcomes(failed=1)
