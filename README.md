@@ -44,6 +44,8 @@ Safety rails (details in [docs/DESIGN.md](docs/DESIGN.md)):
 - **Media guard**: every test session runs under an audit hook that fails any test touching
   `~/Pictures`, a `*.photoslibrary` outside tmp, or a real Takeout export. Extra paths to protect
   (for example where your real Takeout lives) go in `PHOTOMIGRATE_GUARD_FORBID`.
+- **Personal data stays out of git**: real Takeout samples live in `data-in/` and the catalogue in
+  `data/`. Both are gitignored, blocked by a pre-commit hook, and checked in CI.
 - **No-delete check**: `uv run photomigrate-no-delete-check src` fails if production code calls a
   delete or trash API. It runs in pre-commit and CI.
 

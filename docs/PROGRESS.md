@@ -9,6 +9,9 @@
   - Which personal Mac will do the real run? Development happens on the work MacBook (fixtures
     only, no personal media). M2-01 real indexing and the M4 import need a Mac signed into
     Delmar's Apple ID with "Download Originals" on and roughly 150 GB free.
+  - How should the real Takeout samples in `data-in/` be used? (Added by Delmar 2026-10-20:
+    3 zips, 3.7 GB, gitignored and blocked by the media guard.) Proposed: as a reference for
+    the M1-02 fixture generator now; an opt-in, local-only dry-run smoke test after M1-04.
   - If that Mac is short on disk: S3 in a *personal* AWS account as temporary storage for the
     Takeout zips (the project's stated fallback). Not needed for M1.
 

@@ -18,6 +18,11 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
+      - id: no-personal-data
+        name: block personal data folders (CLAUDE.md rule 8)
+        entry: "Personal data must never be committed. Unstage files under data/, data-in/ or takeout/."
+        language: fail
+        files: ^(data|data-in|takeout|Takeout)/
       - id: mypy
         name: mypy --strict (src)
         entry: uv run mypy
