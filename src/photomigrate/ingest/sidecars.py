@@ -64,6 +64,8 @@ class SidecarData:
     favorited: bool = False
     people: tuple[str, ...] = ()
     origin: Origin | None = None
+    url: str | None = None
+    """Google Photos' URL for the item: the same for every copy of it in the export."""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -76,6 +78,7 @@ class SidecarData:
             "favorited": self.favorited,
             "people": list(self.people),
             "origin": self.origin,
+            "url": self.url,
         }
 
     @classmethod
@@ -94,6 +97,7 @@ class SidecarData:
         people = data.get("people")
         origin = data.get("origin")
         title = data.get("title")
+        url = data.get("url")
         return cls(
             title=title if isinstance(title, str) else None,
             description=str(data.get("description") or ""),
@@ -104,6 +108,7 @@ class SidecarData:
             favorited=bool(data.get("favorited")),
             people=tuple(str(p) for p in people) if isinstance(people, list) else (),
             origin=_ORIGINS.get(str(origin)),
+            url=url if isinstance(url, str) else None,
         )
 
 
@@ -139,6 +144,7 @@ def parse_sidecar(data: bytes) -> SidecarData:
     ) else None  # fmt: skip
     people = raw.get("people")
     title = raw.get("title")
+    url = raw.get("url")
     return SidecarData(
         title=title if isinstance(title, str) else None,
         description=str(raw.get("description") or ""),
@@ -155,13 +161,40 @@ def parse_sidecar(data: bytes) -> SidecarData:
         if isinstance(people, list)
         else (),
         origin=origin,
+        url=url if isinstance(url, str) else None,
+    )
+
+
+@dataclass(frozen=True)
+class AlbumData:
+    title: str
+    description: str = ""
+    shared: bool = False
+
+
+def parse_album_metadata(data: bytes) -> AlbumData:
+    """An album folder's ``metadata.json``: title, description, and whether it is shared."""
+    try:
+        raw = json.loads(data)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SidecarError(f"album metadata is not JSON: {exc}") from exc
+    if not isinstance(raw, dict) or not isinstance(raw.get("title"), str):
+        raise SidecarError("album metadata needs a title")
+    return AlbumData(
+        title=raw["title"],
+        description=str(raw.get("description") or ""),
+        shared=bool(raw.get("sharedAlbumComments")) or raw.get("access") == "protected",
     )
 
 
 def is_album_metadata(name: str) -> bool:
-    """Album ``metadata.json`` (localised) and other JSON that is not a media sidecar."""
-    lowered = nfc(name).casefold()
-    return lowered in ALBUM_METADATA_NAMES or lowered in OTHER_KNOWN_JSON
+    """An album's ``metadata.json`` (the name is localised)."""
+    return nfc(name).casefold() in ALBUM_METADATA_NAMES
+
+
+def is_non_sidecar_json(name: str) -> bool:
+    """Album metadata and other Takeout JSON files that describe no media file."""
+    return is_album_metadata(name) or nfc(name).casefold() in OTHER_KNOWN_JSON
 
 
 # --- matching -------------------------------------------------------------------------------
@@ -221,7 +254,9 @@ def match_folder(media: Iterable[str], sidecars: Iterable[str]) -> FolderMatch:
     """Match every media file in one folder to the sidecar Takeout wrote for it."""
     parsed = {name: parse_media_name(name) for name in media}
     candidates = [
-        s for name in sidecars if not is_album_metadata(name) and (s := _sidecar(name)) is not None
+        s
+        for name in sidecars
+        if not is_non_sidecar_json(name) and (s := _sidecar(name)) is not None
     ]
     originals = {
         name: p for name, p in parsed.items() if p.edited is None or not _original_of(p, parsed)
