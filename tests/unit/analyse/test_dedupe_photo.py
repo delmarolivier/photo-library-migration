@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from PIL import Image
+
 from photomigrate.analyse.dedupe_photo import (
     DedupeConfig,
     PhotoRecord,
@@ -16,8 +18,6 @@ from photomigrate.analyse.dedupe_photo import (
     keeper_order,
     near_pairs,
 )
-from PIL import Image
-
 from photomigrate.hashing import image_hashes
 from photomigrate.testing.media import Exif, encode_image, synthetic_image
 
@@ -282,3 +282,21 @@ def test_png_and_other_formats_work_too(tmp_path: Path) -> None:
     (tmp_path / "x.png").write_bytes(buffer.getvalue())
 
     assert image_hashes(tmp_path / "x.png") is not None
+
+
+def test_unknown_sizes_skip_the_aspect_check(tmp_path: Path) -> None:
+    image = scene(60)
+    a = replace(record(tmp_path, image), width=None, height=None)
+    b = record(tmp_path, image, quality=40)
+
+    assert groups_of([a, b]) == [{a.id, b.id}]
+
+
+def test_a_dhash_disagreement_alone_rejects_a_match(tmp_path: Path) -> None:
+    image = scene(61)
+    a = record(tmp_path, image)
+    b = replace(
+        record(tmp_path, image, quality=40), dhash=f"{int(a.dhash or '0', 16) ^ (2**64 - 1):016x}"
+    )
+
+    assert groups_of([a, b]) == []

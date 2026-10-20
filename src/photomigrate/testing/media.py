@@ -46,9 +46,15 @@ def utc(when: datetime) -> datetime:
     return when.astimezone(UTC)
 
 
-def synthetic_image(seed: int, size: tuple[int, int] = (320, 240)) -> Image.Image:
-    """A seeded abstract picture. Different seeds give clearly different images."""
+def synthetic_image(
+    seed: int, size: tuple[int, int] = (320, 240), *, jitter: int = 0
+) -> Image.Image:
+    """A seeded abstract picture. Different seeds give clearly different images.
+
+    ``jitter`` moves every shape by up to that many pixels: the same scene a moment later.
+    """
     rng = random.Random(seed)
+    wobble = random.Random(seed * 7 + jitter)
     width, height = size
     image = Image.new("RGB", size, tuple(rng.randrange(256) for _ in range(3)))
     draw = ImageDraw.Draw(image)
@@ -57,7 +63,8 @@ def synthetic_image(seed: int, size: tuple[int, int] = (320, 240)) -> Image.Imag
         y0, y1 = sorted(rng.randrange(height) for _ in range(2))
         colour = tuple(rng.randrange(256) for _ in range(3))
         shape = draw.ellipse if rng.random() < 0.5 else draw.rectangle
-        shape((x0, y0, x1 + 1, y1 + 1), fill=colour)
+        dx, dy = (wobble.randint(-jitter, jitter) for _ in range(2)) if jitter else (0, 0)
+        shape((x0 + dx, y0 + dy, x1 + dx + 1, y1 + dy + 1), fill=colour)
     return image
 
 
