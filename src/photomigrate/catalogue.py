@@ -191,6 +191,25 @@ ALTER TABLE items ADD COLUMN video_signature TEXT;
 ALTER TABLE items ADD COLUMN bitrate INTEGER;
 """
 
+SCHEMA_V8 = """
+-- A new group kind, 'edit-pair'. SQLite cannot change a CHECK constraint, so the table is
+-- rebuilt (foreign keys are off during migrations and checked afterwards).
+CREATE TABLE groups_v8 (
+    id         INTEGER PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN (
+        'duplicate', 'best-shot', 'date-batch', 'live-pair', 'edit-pair'
+    )),
+    key        TEXT NOT NULL,
+    details    TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    UNIQUE (kind, key)
+);
+INSERT INTO groups_v8 (id, kind, key, details, created_at)
+    SELECT id, kind, key, details, created_at FROM groups;
+DROP TABLE groups;
+ALTER TABLE groups_v8 RENAME TO groups;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -199,9 +218,10 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(5, "scores and time zones", SCHEMA_V5),
     Migration(6, "fine perceptual hashes", SCHEMA_V6),
     Migration(7, "video signatures and bitrates", SCHEMA_V7),
+    Migration(8, "edit pairs", SCHEMA_V8),
 )
 
-GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair"]
+GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
 
 
 @dataclass(frozen=True)
@@ -232,14 +252,26 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] = MIGRATIO
         raise CatalogueVersionError(
             f"catalogue schema v{current} is newer than this photomigrate (v{len(migrations)})"
         )
-    for migration in migrations[current:]:
-        try:
-            conn.executescript(
-                f"BEGIN;\n{migration.sql}\nPRAGMA user_version = {migration.version};\nCOMMIT;"
-            )
-        except sqlite3.Error:
-            conn.execute("ROLLBACK")  # the script opened the transaction with its first statement
-            raise
+    pending = migrations[current:]
+    if not pending:
+        return len(migrations)
+    # Table rebuilds need foreign keys off; they are checked, then restored, afterwards.
+    enforced = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        for migration in pending:
+            try:
+                conn.executescript(
+                    f"BEGIN;\n{migration.sql}\nPRAGMA user_version = {migration.version};\nCOMMIT;"
+                )
+            except sqlite3.Error:
+                conn.execute("ROLLBACK")  # the script opened the transaction with its first line
+                raise
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            raise sqlite3.IntegrityError(f"foreign keys broken by a migration: {broken[:5]}")
+    finally:
+        conn.execute(f"PRAGMA foreign_keys = {'ON' if enforced else 'OFF'}")
     return len(migrations)
 
 

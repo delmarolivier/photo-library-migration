@@ -545,3 +545,16 @@ def test_v8_upgrade_keeps_groups_and_members_and_allows_edit_pairs(tmp_path: Pat
 
 def test_migrations_leave_foreign_keys_on(cat: Catalogue) -> None:
     assert cat._conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_a_migration_that_breaks_foreign_keys_is_refused(tmp_path: Path) -> None:
+    conn = sqlite3.connect(tmp_path / "x.sqlite", isolation_level=None)
+    parent = Migration(1, "parent", "CREATE TABLE p (id INTEGER PRIMARY KEY);")
+    child = Migration(
+        2,
+        "dangling child",
+        "CREATE TABLE c (pid INTEGER REFERENCES p (id)); INSERT INTO c (pid) VALUES (42);",
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="foreign keys broken"):
+        migrate(conn, (parent, child))
