@@ -85,7 +85,8 @@ def test_access_from_a_fixture_errors_the_test(pytester: pytest.Pytester) -> Non
         def peek():
             yield
             try:
-                subprocess.run(["ls", str(Path.home() / "Pictures" / "photomigrate-guard-probe")], check=False)
+                probe = Path.home() / "Pictures" / "photomigrate-guard-probe"
+                subprocess.run(["ls", str(probe)], check=False)
             except PermissionError:
                 pass
 
