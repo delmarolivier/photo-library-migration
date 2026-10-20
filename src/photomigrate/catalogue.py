@@ -199,14 +199,14 @@ def _from_row(row: sqlite3.Row) -> CatalogueItem:
     return CatalogueItem(**values, id=row["id"])
 
 
-def _utc_now() -> datetime:
+def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
 class Catalogue:
     """A migrated catalogue connection. Use ``open`` (read-write) or ``snapshot`` (dry runs)."""
 
-    def __init__(self, conn: sqlite3.Connection, *, clock: Clock = _utc_now) -> None:
+    def __init__(self, conn: sqlite3.Connection, *, clock: Clock = utc_now) -> None:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         self.version = migrate(conn)
@@ -215,12 +215,12 @@ class Catalogue:
         self._depth = 0
 
     @classmethod
-    def open(cls, path: Path, *, clock: Clock = _utc_now) -> Catalogue:
+    def open(cls, path: Path, *, clock: Clock = utc_now) -> Catalogue:
         path.parent.mkdir(parents=True, exist_ok=True)
         return cls(sqlite3.connect(path, isolation_level=None), clock=clock)
 
     @classmethod
-    def snapshot(cls, path: Path, *, clock: Clock = _utc_now) -> Catalogue:
+    def snapshot(cls, path: Path, *, clock: Clock = utc_now) -> Catalogue:
         """An in-memory copy of ``path`` (or an empty catalogue if it does not exist).
 
         Writes go to memory only, so dry runs can plan against real state without side effects.
@@ -325,3 +325,48 @@ class Catalogue:
             (item_id,),
         )
         return {row["source"]: datetime.fromisoformat(row["value"]) for row in rows}
+
+    # -- stage runs and the action log ----------------------------------------------------------
+
+    def applied_action_keys(self, stage: str) -> set[str]:
+        rows = self._conn.execute(
+            "SELECT a.key FROM actions a JOIN stage_runs r ON r.id = a.run_id "
+            "WHERE r.stage = ? AND a.status = 'applied'",
+            (stage,),
+        )
+        return {row["key"] for row in rows}
+
+    def start_run(self, stage: str, plan_path: str | None) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO stage_runs (stage, plan_path, started_at, status) "
+            "VALUES (?, ?, ?, 'running') RETURNING id",
+            (stage, plan_path, self.now()),
+        )
+        return int(cursor.fetchone()["id"])
+
+    def finish_run(self, run_id: int, status: Literal["completed", "failed"]) -> None:
+        self._conn.execute(
+            "UPDATE stage_runs SET status = ?, finished_at = ? WHERE id = ?",
+            (status, self.now(), run_id),
+        )
+
+    def log_action(
+        self, run_id: int, seq: int, *, key: str, kind: str, target: str, details: str
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO actions (run_id, seq, key, kind, target, details, status, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)",
+            (run_id, seq, key, kind, target, details, self.now()),
+        )
+
+    def set_action_status(
+        self,
+        run_id: int,
+        seq: int,
+        status: Literal["applied", "failed"],
+        error: str | None = None,
+    ) -> None:
+        self._conn.execute(
+            "UPDATE actions SET status = ?, error = ?, updated_at = ? WHERE run_id = ? AND seq = ?",
+            (status, error, self.now(), run_id, seq),
+        )

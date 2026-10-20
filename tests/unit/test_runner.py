@@ -10,10 +10,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from photomigrate.runner import Action, Plan, StageFailedError, render_result, run_stage
 from rich.console import Console
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
+from photomigrate.runner import Action, Plan, StageFailedError, render_result, run_stage
 
 T0 = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
 
@@ -313,3 +313,12 @@ def test_plan_summary_counts_by_kind() -> None:
     )
 
     assert plan.summary() == {"copy": 2, "tag": 1}
+
+
+def test_defaults_use_the_wall_clock(setup: tuple[Path, CopyStage, Path, Path]) -> None:
+    _, stage, db, plans = setup
+
+    result = run_stage(stage, catalogue_path=db, plan_dir=plans)
+
+    assert result.plan.mode == "dry-run"
+    assert abs(result.plan.created_at - datetime.now(UTC)) < timedelta(minutes=1)
