@@ -63,3 +63,46 @@ def test_mistakes_are_reported_with_the_setting_name(
 def test_a_missing_file_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="no config file"):
         load_config(tmp_path / "nope.toml")
+
+
+def test_best_shot_defaults_are_a_two_minute_window_and_weights_for_every_score() -> None:
+    best_shot = Config().best_shot
+
+    assert best_shot.window_seconds == 120.0
+    assert 0 < best_shot.min_similarity < 1
+    weights = best_shot.weights
+    assert {name: getattr(weights, name) > 0 for name in weights.names()} == {
+        "sharpness": True,
+        "exposure": True,
+        "faces": True,
+        "eyes_open": True,
+        "aesthetic": True,
+    }
+
+
+def test_best_shot_window_and_weights_can_be_overridden(tmp_path: Path) -> None:
+    config = load_config(
+        write(tmp_path, "[best_shot]\nwindow_seconds = 30\n[best_shot.weights]\nfaces = 0\n")
+    )
+
+    assert config.best_shot.window_seconds == 30.0
+    assert config.best_shot.weights.faces == 0.0
+    assert config.best_shot.weights.sharpness == Config().best_shot.weights.sharpness
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("[best_shot]\nmin_similarity = 1.5\n", "'best_shot.min_similarity' must be at most 1"),
+        (
+            "[best_shot.weights]\nsharpness = 0\nexposure = 0\nfaces = 0\neyes_open = 0\n"
+            "aesthetic = 0\n",
+            "at least one 'best_shot.weights' setting must be above 0",
+        ),
+    ],
+)
+def test_best_shot_settings_that_cannot_work_are_errors(
+    tmp_path: Path, text: str, message: str
+) -> None:
+    with pytest.raises(ConfigError, match=re.escape(message)):
+        load_config(write(tmp_path, text))
