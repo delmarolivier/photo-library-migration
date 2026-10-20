@@ -190,3 +190,12 @@ def test_signature_distance_compares_aligned_frames() -> None:
     assert signature_distance(["00", "ff"], ["00", "ff"]) == 0
     assert signature_distance(["00", "ff"], ["0f", "ff", "00"]) == 2
     assert signature_distance([], ["00"]) == 64
+
+
+def test_no_ffmpeg_means_no_signature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from photomigrate import hashing
+
+    path = clip(tmp_path, "a.mp4", encode_video(video_frames(1), "mp4"))
+    monkeypatch.setattr(hashing.shutil, "which", lambda _name: None)
+
+    assert video_signature(path, duration=1.0) is None

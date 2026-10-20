@@ -212,3 +212,10 @@ def test_reencode_video_can_downscale_and_lower_quality(
     assert float(probe["format"]["duration"]) == pytest.approx(2.0, abs=0.1)  # type: ignore[index]
     assert len(smaller) < len(original)
     assert reencode_video(original, "mov") != original
+
+
+def test_reencoding_without_ffmpeg_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+
+    with pytest.raises(MediaToolMissingError, match="re-encode"):
+        reencode_video(b"", "mp4")
