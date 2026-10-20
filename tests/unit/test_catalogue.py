@@ -349,3 +349,107 @@ def test_metadata_plans_are_stored_with_the_item(cat: Catalogue) -> None:
     stored = cat.get_item("google", PHOTO.source_key)
     assert stored is not None
     assert stored.metadata_plan == plan
+
+
+# --- albums, copies and keywords (v3) ----------------------------------------------------------
+
+
+def test_v3_upgrades_a_v2_catalogue(tmp_path: Path) -> None:
+    path = tmp_path / "v2.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:2])
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.version >= 3
+        assert catalogue.albums() == []
+
+
+def test_albums_are_upserted_by_folder_and_only_rewritten_on_change(
+    cat: Catalogue, path: Path
+) -> None:
+    first = cat.upsert_album(
+        "google", "Takeout/Google Photos/Été 2019", "Été 2019", "Vacances 🌞", True
+    )
+    before = dump(path)
+
+    assert (
+        cat.upsert_album(
+            "google", "Takeout/Google Photos/Été 2019", "Été 2019", "Vacances 🌞", True
+        )
+        == first
+    )
+    assert dump(path) == before
+    cat.upsert_album("google", "Takeout/Google Photos/Été 2019", "Summer 2019", "", True)
+    (album,) = cat.albums()
+    assert (album.id, album.title, album.description, album.shared) == (
+        first,
+        "Summer 2019",
+        "",
+        True,
+    )
+
+
+def test_one_item_in_three_albums(cat: Catalogue) -> None:
+    item_id = cat.upsert_item(PHOTO)
+    albums = [cat.upsert_album("google", f"Takeout/Google Photos/{t}", t) for t in ("A", "B", "C")]
+
+    for album_id in albums + albums:
+        cat.add_album_member(album_id, item_id)
+
+    assert cat.albums_of(item_id) == ["A", "B", "C"]
+    assert cat.album_members(albums[0]) == [item_id]
+
+
+def test_copies_are_extra_locations_of_one_item(cat: Catalogue) -> None:
+    item_id = cat.upsert_item(PHOTO)
+
+    cat.add_copy("google", "Takeout/Google Photos/A/IMG_1001.JPG", item_id)
+    cat.add_copy("google", "Takeout/Google Photos/A/IMG_1001.JPG", item_id)
+    cat.add_copy("google", "Takeout/Google Photos/B/IMG_1001.JPG", item_id)
+
+    assert cat.copies_of(item_id) == [
+        "Takeout/Google Photos/A/IMG_1001.JPG",
+        "Takeout/Google Photos/B/IMG_1001.JPG",
+    ]
+    assert cat.item_for_key("google", "Takeout/Google Photos/B/IMG_1001.JPG") == item_id
+    assert cat.item_for_key("google", PHOTO.source_key) == item_id
+    assert cat.item_for_key("google", "nope") is None
+
+
+def test_a_path_cannot_be_a_copy_of_two_items(cat: Catalogue) -> None:
+    first = cat.upsert_item(PHOTO)
+    second = cat.upsert_item(CatalogueItem(source="google", source_key="other", kind="photo"))
+    cat.add_copy("google", "Takeout/Google Photos/A/x.jpg", first)
+
+    with pytest.raises(ValueError, match="already a copy"):
+        cat.add_copy("google", "Takeout/Google Photos/A/x.jpg", second)
+
+
+def test_items_are_found_by_hash(cat: Catalogue) -> None:
+    item_id = cat.upsert_item(PHOTO)
+
+    found = cat.find_by_sha256("google", PHOTO.sha256 or "")
+
+    assert [i.id for i in found] == [item_id]
+    assert cat.find_by_sha256("icloud", PHOTO.sha256 or "") == []
+
+
+def test_keywords_under_a_prefix_are_replaced_as_a_set(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO)
+    cat.set_keywords(item_id, "People/", ["People/Alice Example", "People/Bob Example"])
+    cat.set_keywords(item_id, "Date/", ["Date/approx"])
+    before = dump(path)
+
+    cat.set_keywords(item_id, "People/", ["People/Bob Example", "People/Alice Example"])
+    assert dump(path) == before
+    cat.set_keywords(item_id, "People/", ["People/Bob Example"])
+
+    assert cat.keywords(item_id) == {"People/Bob Example", "Date/approx"}
+
+
+def test_keywords_must_carry_their_prefix(cat: Catalogue) -> None:
+    item_id = cat.upsert_item(PHOTO)
+
+    with pytest.raises(ValueError, match="prefix"):
+        cat.set_keywords(item_id, "People/", ["Alice"])
