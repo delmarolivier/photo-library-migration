@@ -167,3 +167,17 @@ def test_an_icloud_keeper_is_never_staged(cat: Catalogue) -> None:
     cat.set_decision("group", dup, "duplicate", {"keeper": name(cat, keeper)})
 
     assert to_delete(cat) == {}
+
+
+def test_an_edit_of_a_google_creation_follows_its_originals_answer(cat: Catalogue) -> None:
+    creation = google(cat, "IMG_0900-SMILE.jpg", flags=frozenset({"google-creation"}))
+    edit = google(cat, "IMG_0900-SMILE-edited.jpg", flags=frozenset({"google-creation", "edited"}))
+    keys = [f"{ROOT}/IMG_0900-SMILE.jpg", f"{ROOT}/IMG_0900-SMILE-edited.jpg"]
+    group(cat, "edit-pair", keys[1], [(creation, "original"), (edit, "edited")],
+          policy="pair", keep=keys)  # fmt: skip
+
+    assert outcomes(cat)[edit].status == "pending"
+    cat.set_decision("item", creation, "clutter", {"reject": True})
+    assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "clutter")
+    cat.set_decision("item", creation, "clutter", {"reject": False})
+    assert outcomes(cat)[edit].status == "import"

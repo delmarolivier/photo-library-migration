@@ -279,6 +279,11 @@ CREATE TABLE staged (
 );
 """
 
+SCHEMA_V16 = """
+-- The size in bytes of the item's original, for the reconciliation report.
+ALTER TABLE items ADD COLUMN size INTEGER;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -295,6 +300,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(13, "inferred locations", SCHEMA_V13),
     Migration(14, "imports", SCHEMA_V14),
     Migration(15, "staged for To Delete", SCHEMA_V15),
+    Migration(16, "sizes", SCHEMA_V16),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -386,6 +392,7 @@ class CatalogueItem:
     faces: str | None = None
     camera: str | None = None
     text: str | None = None
+    size: int | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:

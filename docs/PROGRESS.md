@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M4-02] CLA-90 ("To Delete" staging, no-delete guarantee).
-- Next issue: [M4-03] CLA-91 (reconciliation report).
+- Last completed issue: [M4-03] CLA-91 (reconciliation report).
+- Next issue: [M4-04] CLA-92 (runbook and real-data rehearsal; the rehearsal needs Delmar).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
@@ -23,6 +23,15 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-21: session 1 (continued): M4-03
+- `photomigrate report`: HTML and CSV, one status per Google item (imported with uuid,
+  duplicate-of-existing with the uuid that stays, rejected-by-user with the reason, or
+  unaccounted with why), totals and bytes (catalogue v16 `items.size`), the SHA-256 trail,
+  date and location fixes, To Delete count; exit 1 while anything is unaccounted.
+- Fix found by the report: edits of Google creations follow their original's clutter
+  answer; unpaired edits are queued themselves.
+- Tests: 1,158, 100%. The full-pipeline test ends with a clean report.
+
 ### 2026-10-21: session 1 (continued): M4-02
 - `import` stages and unstages "To Delete" so the album is exactly the rejected iCloud items
   (catalogue v15 `staged`); `PhotosLibrary.remove_from_album` (album membership only).

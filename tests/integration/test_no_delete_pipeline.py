@@ -124,6 +124,9 @@ def test_the_whole_pipeline_runs_without_deleting_anything(
             input="y\n",
         )  # fmt: skip
         assert imported.exit_code == 0, imported.output
+        reported = runner.invoke(app, [*common, "report", "--out", str(tmp_path / "report")])
+        assert reported.exit_code == 0, reported.output
+        assert "0 unaccounted" in reported.output
 
     assert refused == []
     assert guard.violations == []
