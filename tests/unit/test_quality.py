@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pytest
-from photomigrate.quality import photo_metrics, video_metrics
 from PIL import Image, ImageEnhance, ImageFilter
 
 from photomigrate.hashing import sample_video, signature_of
+from photomigrate.quality import photo_metrics, video_metrics
 from photomigrate.testing.media import encode_image, encode_video, synthetic_image, video_frames
 
 
@@ -30,7 +30,8 @@ def test_dark_and_bright_pictures(tmp_path: Path) -> None:
     image = synthetic_image(2, size=(800, 600))
     normal = photo_metrics(jpeg(tmp_path, "n.jpg", image))
     dark = photo_metrics(jpeg(tmp_path, "d.jpg", ImageEnhance.Brightness(image).enhance(0.12)))
-    bright = photo_metrics(jpeg(tmp_path, "b.jpg", ImageEnhance.Brightness(image).enhance(4.0)))
+    washed_out = Image.blend(image, Image.new("RGB", image.size, "white"), 0.95)
+    bright = photo_metrics(jpeg(tmp_path, "b.jpg", washed_out))
 
     assert normal is not None
     assert dark is not None
@@ -95,6 +96,7 @@ def test_video_brightness_and_motion(tmp_path: Path) -> None:
     m, b, s = video_metrics(moving), video_metrics(black), video_metrics(still)
     assert b.brightness < 10 < m.brightness
     assert s.motion < 0.5 < m.motion
+    assert type(m).from_dict(m.to_dict()) == m
 
 
 def test_the_signature_comes_from_the_same_sampled_frames(tmp_path: Path) -> None:
@@ -106,3 +108,16 @@ def test_the_signature_comes_from_the_same_sampled_frames(tmp_path: Path) -> Non
     assert frames is not None
     assert signature_of(frames) == video_signature(path, 2.0)
     assert sample_video(path, None) is None
+
+
+def test_sideways_photos_report_their_upright_size(tmp_path: Path) -> None:
+    exif = Image.Exif()
+    exif[0x0112] = 6  # stored landscape, shown portrait
+    path = tmp_path / "turned.jpg"
+    synthetic_image(6, size=(900, 300)).save(path, "JPEG", exif=exif.tobytes())
+
+    metrics = photo_metrics(path)
+
+    assert metrics is not None
+    assert metrics.short_side == 300
+    assert metrics.megapixels == pytest.approx(0.27)
