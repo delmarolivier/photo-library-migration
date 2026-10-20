@@ -13,13 +13,18 @@ _MAX_OFFSET = timedelta(hours=14)
 _QUARTER_HOUR = timedelta(minutes=15)
 
 
-def same_moment(a: datetime, b: datetime, tolerance: timedelta) -> bool:
-    """Whether ``a`` and ``b`` can be the same moment, within ``tolerance``."""
+def moment_gap(a: datetime, b: datetime) -> timedelta:
+    """How far apart ``a`` and ``b`` are, allowing a whole time-zone offset between a local
+    time and an instant. Beyond 14 hours apart, the plain difference is returned."""
     if (a.tzinfo is None) == (b.tzinfo is None):
-        return abs(a - b) <= tolerance
+        return abs(a - b)
     local, instant = (a, b) if a.tzinfo is None else (b, a)
     delta = abs(local - instant.astimezone(UTC).replace(tzinfo=None))
-    if delta > _MAX_OFFSET + tolerance:
-        return False
     remainder = delta % _QUARTER_HOUR
-    return min(remainder, _QUARTER_HOUR - remainder) <= tolerance
+    nearest = min(remainder, _QUARTER_HOUR - remainder)
+    return delta if delta - nearest > _MAX_OFFSET else nearest
+
+
+def same_moment(a: datetime, b: datetime, tolerance: timedelta) -> bool:
+    """Whether ``a`` and ``b`` can be the same moment, within ``tolerance``."""
+    return moment_gap(a, b) <= tolerance

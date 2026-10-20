@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from photomigrate.dates import same_moment
+from photomigrate.dates import moment_gap, same_moment
 
 TAKEN = datetime(2019, 7, 1, 10, 34, 56, tzinfo=UTC)
 
@@ -33,3 +33,9 @@ def test_two_naive_times_compare_directly() -> None:
         datetime(2019, 7, 1, 12), datetime(2019, 7, 1, 12, 0, 2), timedelta(seconds=2)
     )
     assert not same_moment(datetime(2019, 7, 1, 12), datetime(2019, 7, 1, 14), timedelta(seconds=2))
+
+
+def test_moment_gap_measures_the_residual_after_a_time_zone_offset() -> None:
+    assert moment_gap(datetime(2019, 7, 1, 12, 35, 0), TAKEN) == timedelta(seconds=4)
+    assert moment_gap(TAKEN, TAKEN + timedelta(seconds=9)) == timedelta(seconds=9)
+    assert moment_gap(datetime(2019, 7, 3, 10, 34, 56), TAKEN) == timedelta(days=2)
