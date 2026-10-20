@@ -17,21 +17,27 @@ decided here; the user confirms in review.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Literal, cast
+from typing import cast
 
 import numpy as np
 
+from photomigrate.analyse.grouping import (
+    DuplicateGroup,
+    UnionFind,
+    apply_proposal,
+    proposal_actions,
+    same_value_pairs,
+)
 from photomigrate.catalogue import Catalogue, CatalogueItem, Source
 from photomigrate.dates import same_moment
 from photomigrate.hashing import hamming
-from photomigrate.runner import Action, JSONValue
+from photomigrate.runner import Action
 
-Method = Literal["exact", "content-id", "near", "mixed"]
+__all__ = ["DedupeConfig", "DedupeStage", "DuplicateGroup", "PhotoRecord", "find_duplicates"]
 
 
 @dataclass(frozen=True)
@@ -62,14 +68,6 @@ class PhotoRecord:
     has_date: bool
     has_gps: bool
     has_caption: bool
-
-
-@dataclass(frozen=True)
-class DuplicateGroup:
-    keeper: int
-    members: tuple[int, ...]
-    """Record ids, keeper first, then in keeper order."""
-    method: Method
 
 
 def near_pairs(
@@ -128,59 +126,18 @@ def keeper_order(records: Iterable[PhotoRecord]) -> list[PhotoRecord]:
     )
 
 
-class _Groups:
-    def __init__(self, ids: Iterable[int]) -> None:
-        self.parent = {i: i for i in ids}
-        self.kinds: dict[int, set[str]] = {}
-
-    def find(self, i: int) -> int:
-        while self.parent[i] != i:
-            self.parent[i] = self.parent[self.parent[i]]
-            i = self.parent[i]
-        return i
-
-    def join(self, a: int, b: int, kind: str) -> None:
-        root_a, root_b = self.find(a), self.find(b)
-        kinds = self.kinds.pop(root_a, set()) | self.kinds.pop(root_b, set()) | {kind}
-        self.parent[root_b] = root_a
-        self.kinds[root_a] = kinds
-
-
-def _same(records: Iterable[PhotoRecord], attribute: str) -> Iterable[tuple[int, int]]:
-    seen: dict[str, int] = {}
-    for record in records:
-        value = getattr(record, attribute)
-        if value:
-            if value in seen:
-                yield seen[value], record.id
-            else:
-                seen[value] = record.id
-
-
 def find_duplicates(records: Sequence[PhotoRecord], config: DedupeConfig) -> list[DuplicateGroup]:
-    groups = _Groups(r.id for r in records)
-    for first, second in _same(records, "sha256"):
+    groups = UnionFind(r.id for r in records)
+    for first, second in same_value_pairs(records, "sha256"):
         groups.join(first, second, "exact")
-    for first, second in _same(records, "content_id"):
+    for first, second in same_value_pairs(records, "content_id"):
         groups.join(first, second, "content-id")
     hashed = [r for r in records if r.phash]
     for i, j, _ in near_pairs([int(r.phash or "0", 16) for r in hashed], config.candidate_phash):
         a, b = hashed[i], hashed[j]
         if groups.find(a.id) != groups.find(b.id) and _verified(a, b, config):
             groups.join(a.id, b.id, "near")
-
-    by_root: dict[int, list[PhotoRecord]] = {}
-    for record in records:
-        by_root.setdefault(groups.find(record.id), []).append(record)
-    result = []
-    for root, members in by_root.items():
-        if len(members) < 2:
-            continue
-        ordered = keeper_order(members)
-        kinds = groups.kinds[root]
-        method = cast(Method, "mixed" if len(kinds) > 1 else next(iter(kinds)))
-        result.append(DuplicateGroup(ordered[0].id, tuple(r.id for r in ordered), method))
-    return sorted(result, key=lambda g: g.members)
+    return groups.groups(records, keeper_order)
 
 
 # --- the stage -----------------------------------------------------------------------------
@@ -209,11 +166,6 @@ def _record(catalogue: Catalogue, item: CatalogueItem) -> PhotoRecord:
     )
 
 
-def _group_key(members: Iterable[PhotoRecord]) -> str:
-    names = "|".join(sorted(f"{m.source}:{m.key}" for m in members))
-    return "dup-" + hashlib.sha256(names.encode()).hexdigest()[:16]
-
-
 class DedupeStage:
     """Propose photo duplicate groups (``groups.kind = 'duplicate'``) with their keepers."""
 
@@ -231,49 +183,14 @@ class DedupeStage:
             and not (item.source == "google" and _LEFT_OUT & item.flags)
         ]
         by_id = {r.id: r for r in records}
-        motions = {
-            pair[0][0]: pair[1][0]
-            for group in catalogue.groups("live-pair")
-            if len(pair := catalogue.group_members(group.id)) == 2
-        }
-        wanted = set()
-        for group in find_duplicates(records, self.config):
-            members = [by_id[i] for i in group.members]
-            key = _group_key(members)
-            wanted.add(key)
-            listed: list[JSONValue] = []
-            for record in members:
-                role = "keeper" if record.id == group.keeper else "duplicate"
-                listed.append([record.source, record.key, role])
-                if record.id in motions:
-                    motion = catalogue.item(motions[record.id])
-                    listed.append([motion.source, motion.source_key, "motion"])
-            keeper = by_id[group.keeper]
-            yield Action(
-                "propose-duplicates",
-                key,
-                {
-                    "keeper": f"{keeper.source}:{keeper.key}",
-                    "method": group.method,
-                    "members": listed,
-                },
-            )
-        for stale in catalogue.groups("duplicate"):
-            if stale.key not in wanted:
-                yield Action("retire-duplicates", stale.key)
+        motions: dict[int, tuple[Source, str, str]] = {}
+        for group in catalogue.groups("live-pair"):
+            pair = catalogue.group_members(group.id)
+            if len(pair) == 2:
+                motion = catalogue.item(pair[1][0])
+                motions[pair[0][0]] = (motion.source, motion.source_key, "motion")
+        found = find_duplicates(records, self.config)
+        yield from proposal_actions(catalogue, found, by_id, "dup-", motions)
 
     def apply(self, action: Action, catalogue: Catalogue) -> None:
-        if action.kind == "retire-duplicates":
-            catalogue.discard_group("duplicate", action.target)
-            return
-        details = action.details
-        group = catalogue.upsert_group(
-            "duplicate", action.target, {"keeper": details["keeper"], "method": details["method"]}
-        )
-        members = []
-        for rank, (source, key, role) in enumerate(cast(list[list[str]], details["members"])):
-            item_id = catalogue.item_for_key(cast(Source, source), key)
-            if item_id is None:
-                raise KeyError(f"{source}:{key} is no longer in the catalogue")
-            members.append((item_id, role, rank))
-        catalogue.set_group_members(group, members)
+        apply_proposal(action, catalogue)

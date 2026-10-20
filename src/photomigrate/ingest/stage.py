@@ -21,7 +21,7 @@ from types import TracebackType
 from typing import Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
-from photomigrate.hashing import image_hashes
+from photomigrate.hashing import bitrate, image_hashes, video_signature
 from photomigrate.ingest.exif import ExifTool, can_write
 from photomigrate.ingest.names import Kind, media_kind, parse_media_name
 from photomigrate.ingest.policy import date_candidates, decide
@@ -178,6 +178,9 @@ class IngestStage:
         with self.takeout.local_copy(entry, scratch) as (copy, sha256):
             embedded = self.exiftool.read(copy)
             hashes = image_hashes(copy) if details["kind"] == "photo" else None
+            signature = (
+                video_signature(copy, embedded.duration) if details["kind"] == "video" else None
+            )
         raw = details.get("sidecar_data")
         sidecar = SidecarData.from_dict(raw) if isinstance(raw, dict) else None
         album = details.get("album")
@@ -224,6 +227,8 @@ class IngestStage:
             width=embedded.width,
             height=embedded.height,
             duration=embedded.duration,
+            video_signature=",".join(signature) if signature else None,
+            bitrate=bitrate(entry.size, embedded.duration) if details["kind"] == "video" else None,
             latitude=embedded.latitude if embedded.latitude is not None else plan.latitude,
             longitude=embedded.longitude if embedded.longitude is not None else plan.longitude,
             altitude=embedded.altitude if embedded.latitude is not None else plan.altitude,

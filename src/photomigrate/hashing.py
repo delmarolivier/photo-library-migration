@@ -8,7 +8,10 @@ size first, which is much faster and gives the same hash.
 from __future__ import annotations
 
 import hashlib
+import shutil
+import subprocess
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -71,3 +74,48 @@ def hamming(a: str, b: str) -> int:
     if len(a) != len(b):
         raise ValueError("hashes of different length cannot be compared")
     return (int(a, 16) ^ int(b, 16)).bit_count()
+
+
+_FRAME = 64
+
+
+def video_signature(path: Path, duration: float | None, frames: int = 8) -> list[str] | None:
+    """64-bit pHashes of ``frames`` frames sampled evenly across a video, in order.
+
+    One ffmpeg pass decodes the frames as 64x64 greyscale. ``None`` means no signature: the
+    duration is unknown, or ffmpeg could not decode the file.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None or not duration or duration <= 0:
+        return None
+    rate = frames / duration
+    args = [
+        ffmpeg, "-nostdin", "-loglevel", "error", "-i", str(path),
+        "-vf", f"fps={rate:.6f},scale={_FRAME}:{_FRAME}:flags=area,format=gray",
+        "-frames:v", str(frames), "-f", "rawvideo", "-",
+    ]  # fmt: skip
+    # Fixed argv: our own values plus the file path; no shell.
+    done = subprocess.run(args, capture_output=True, check=False)  # noqa: S603
+    size = _FRAME * _FRAME
+    if done.returncode != 0 or len(done.stdout) < size:
+        return None
+    raw = done.stdout
+    return [
+        str(imagehash.phash(Image.frombytes("L", (_FRAME, _FRAME), raw[i : i + size])))
+        for i in range(0, len(raw) - size + 1, size)
+    ]
+
+
+def signature_distance(a: Sequence[str], b: Sequence[str]) -> float:
+    """Mean bit difference of aligned frames; 64 (all different) if nothing overlaps."""
+    pairs = list(zip(a, b, strict=False))
+    if not pairs:
+        return 64.0
+    return sum(hamming(x, y) for x, y in pairs) / len(pairs)
+
+
+def bitrate(size: int | None, duration: float | None) -> int | None:
+    """Average bits per second, from the file size and duration."""
+    if not size or not duration or duration <= 0:
+        return None
+    return int(size * 8 / duration)

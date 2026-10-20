@@ -169,3 +169,31 @@ def encode_video(
         # Fixed argv built from our own values; no shell.
         subprocess.run([*args, str(out)], input=raw, check=True, capture_output=True)  # noqa: S603
         return out.read_bytes()
+
+
+def reencode_video(
+    data: bytes,
+    container: Container,
+    *,
+    scale: tuple[int, int] | None = None,
+    crf: int | None = None,
+) -> bytes:
+    """``data`` re-encoded by ffmpeg, as a messaging app or an export would: same content,
+    new bytes, optionally smaller and lower quality. Metadata is kept."""
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise MediaToolMissingError("ffmpeg is needed to re-encode fixture videos")
+    with tempfile.TemporaryDirectory(prefix="photomigrate-video-") as scratch:
+        source, out = Path(scratch) / "in.bin", Path(scratch) / f"out.{container}"
+        source.write_bytes(data)
+        args = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(source)]
+        if scale:
+            args += ["-vf", f"scale={scale[0]}:{scale[1]}"]
+        args += [
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-crf", str(crf if crf is not None else 23),
+            "-fflags", "+bitexact", "-flags:v", "+bitexact", "-map_metadata", "0",
+        ]  # fmt: skip
+        # Fixed argv built from our own values; no shell.
+        subprocess.run([*args, str(out)], check=True, capture_output=True)  # noqa: S603
+        return out.read_bytes()

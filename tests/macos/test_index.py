@@ -112,6 +112,8 @@ def test_live_photos_and_videos(live_library: Path, tmp_path: Path) -> None:
     movie = next(i for i in stored.values() if i.kind == "video")
     assert movie.duration is not None
     assert movie.duration > 0
+    assert movie.video_signature is not None
+    assert movie.bitrate is not None
 
 
 def test_missing_originals_are_reported_not_skipped(test_library: Path, tmp_path: Path) -> None:

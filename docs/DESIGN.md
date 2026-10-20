@@ -2,6 +2,25 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Video dedupe (M2-03)
+
+`photomigrate analyse` also runs `dedupe-videos` (`analyse.dedupe_video`).
+
+- **Signatures:** ingest and index store a signature per video (catalogue v7
+  `video_signature`, `bitrate`): pHashes of 8 frames sampled evenly by one ffmpeg pass (64x64
+  greyscale). The bitrate is size × 8 / duration.
+- **Matching:** same SHA-256 (`exact`), or a `near` match. A near match needs:
+  - durations within ±0.5 s (only that window is compared);
+  - a mean aligned-frame distance of 8 bits or less;
+  - an aspect ratio within 2%;
+  - the same moment, if both carry a QuickTime date.
+  In tests, re-encoded or downscaled copies come out ≤ 4 apart, and different clips of the same
+  length > 12 apart.
+- **Exclusions:** Live Photo motion clips (`live-photo-motion`, `unpaired-motion`).
+- **Keeper order:** resolution, then bitrate, then metadata, then iCloud, then the key.
+- **Shared plumbing:** groups go through `analyse.grouping`. Each stage owns the `duplicate`
+  groups with its key prefix (`dup-` photos, `vdup-` videos) and retires only its own stale ones.
+
 ## Photo dedupe (M2-02)
 
 `photomigrate analyse [--apply]` runs `dedupe-photos` (`analyse.dedupe_photo`) over every

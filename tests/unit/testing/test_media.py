@@ -16,6 +16,7 @@ from photomigrate.testing.media import (
     encode_gif,
     encode_image,
     encode_video,
+    reencode_video,
     synthetic_image,
     video_frames,
 )
@@ -196,3 +197,25 @@ def test_jitter_moves_the_shapes_a_little() -> None:
     moved = synthetic_image(5, jitter=3)
     assert moved.tobytes() != still.tobytes()
     assert mean_difference(still, moved) < mean_difference(still, synthetic_image(6))
+
+
+def test_reencode_video_can_downscale_and_lower_quality(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    original = encode_video(video_frames(3, seconds=2.0, size=(128, 96)), "mp4")
+
+    smaller = reencode_video(original, "mp4", scale=(64, 48), crf=40)
+
+    probe = ffprobe(smaller, ".mp4", tmp_path_factory)
+    stream = probe["streams"][0]  # type: ignore[index]
+    assert (stream["width"], stream["height"]) == (64, 48)
+    assert float(probe["format"]["duration"]) == pytest.approx(2.0, abs=0.1)  # type: ignore[index]
+    assert len(smaller) < len(original)
+    assert reencode_video(original, "mov") != original
+
+
+def test_reencoding_without_ffmpeg_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+
+    with pytest.raises(MediaToolMissingError, match="re-encode"):
+        reencode_video(b"", "mp4")
