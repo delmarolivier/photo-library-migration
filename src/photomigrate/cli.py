@@ -1,6 +1,7 @@
 """Command-line entry point: `photomigrate`."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -11,6 +12,7 @@ from rich.console import Console
 from photomigrate import __version__
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
+from photomigrate.analyse.edited import EditedVersionsStage
 from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
@@ -136,6 +138,12 @@ def index(
     warn_missing_originals([a for a in result.plan.actions if a.kind == "index-missing"], console)
 
 
+class EditedPolicyChoice(StrEnum):
+    pair = "pair"
+    original_only = "original-only"
+    edited_only = "edited-only"
+
+
 @app.command()
 def analyse(
     ctx: typer.Context,
@@ -154,11 +162,18 @@ def analyse(
     signature_max: Annotated[
         float, typer.Option(help="Max mean frame distance for a near-duplicate video.")
     ] = VideoDedupeConfig.signature_max,
+    edited_policy: Annotated[
+        EditedPolicyChoice, typer.Option(help="What to keep of an original and its Google edit.")
+    ] = EditedPolicyChoice.pair,
 ) -> None:
-    """Propose duplicate groups (photos and videos) with keepers. Proposals only."""
+    """Link edits to originals, and propose duplicate groups (photos and videos) with keepers.
+
+    Proposals only: the review decides.
+    """
     settings: Settings = ctx.obj
     console = Console()
     stages = (
+        EditedVersionsStage(edited_policy.value),
         DedupeStage(
             DedupeConfig(candidate_phash=candidate_phash, fine_max=fine_max, dhash_max=dhash_max)
         ),

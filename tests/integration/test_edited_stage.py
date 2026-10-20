@@ -5,10 +5,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from photomigrate.analyse.edited import EditedVersionsStage
 from typer.testing import CliRunner
 
 from photomigrate.analyse.dedupe_photo import DedupeStage
+from photomigrate.analyse.edited import EditedVersionsStage
 from photomigrate.catalogue import Catalogue
 from photomigrate.cli import app
 from photomigrate.ingest.stage import IngestStage
@@ -137,3 +137,22 @@ def test_analyse_takes_the_policy(catalogue_path: Path, tmp_path: Path) -> None:
     assert {policy for _, _, policy in pairs(catalogue_path).values()} == {"edited-only"}
     bad = CliRunner().invoke(app, [*args, "--edited-policy", "both"])
     assert bad.exit_code == 2
+
+
+def test_an_unknown_policy_is_refused() -> None:
+    with pytest.raises(ValueError, match="edited_policy"):
+        EditedVersionsStage("both")  # type: ignore[arg-type]
+
+
+def test_a_link_that_no_longer_holds_is_removed(catalogue_path: Path, tmp_path: Path) -> None:
+    pair_edits(catalogue_path, tmp_path)
+    edit = next(iter(pairs(catalogue_path)))
+    with Catalogue.open(catalogue_path) as catalogue:
+        item = catalogue.get_item("google", edit)
+        assert item is not None
+        catalogue.upsert_item(item.replace(flags=item.flags - {"edited"}, id=None))
+
+    result = pair_edits(catalogue_path, tmp_path)
+
+    assert [a.kind for a in result.plan.actions] == ["unpair-edit"]
+    assert edit not in pairs(catalogue_path)

@@ -617,6 +617,14 @@ class Catalogue:
         )
         return [str(row["source_key"]) for row in rows]
 
+    def copies(self, source: Source) -> list[tuple[str, int]]:
+        """Every extra Takeout location of a ``source`` item: (path, item id)."""
+        rows = self._conn.execute(
+            "SELECT source_key, item_id FROM item_copies WHERE source = ? ORDER BY source_key",
+            (source,),
+        )
+        return [(str(row["source_key"]), int(row["item_id"])) for row in rows]
+
     def item_for_key(self, source: Source, source_key: str) -> int | None:
         """The item a Takeout path belongs to, whether it is the item's own path or a copy."""
         row = self._conn.execute(
