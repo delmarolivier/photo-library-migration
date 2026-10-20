@@ -453,3 +453,60 @@ def test_keywords_must_carry_their_prefix(cat: Catalogue) -> None:
 
     with pytest.raises(ValueError, match="prefix"):
         cat.set_keywords(item_id, "People/", ["Alice"])
+
+
+# --- groups, flags and content identifiers (v4) ------------------------------------------------
+
+
+def test_items_keep_their_content_identifier(cat: Catalogue) -> None:
+    cat.upsert_item(PHOTO.replace(content_id="3F2504E0"))
+
+    stored = cat.get_item("google", PHOTO.source_key)
+    assert stored is not None
+    assert stored.content_id == "3F2504E0"
+
+
+def test_groups_are_upserted_by_kind_and_key_with_their_members(cat: Catalogue, path: Path) -> None:
+    still = cat.upsert_item(PHOTO)
+    motion = cat.upsert_item(CatalogueItem(source="google", source_key="m.MOV", kind="video"))
+
+    group = cat.upsert_group("live-pair", PHOTO.source_key, {"method": "content-id"})
+    cat.set_group_members(group, [(still, "still", 0), (motion, "motion", 1)])
+    before = dump(path)
+    assert cat.upsert_group("live-pair", PHOTO.source_key, {"method": "content-id"}) == group
+    cat.set_group_members(group, [(motion, "motion", 1), (still, "still", 0)])
+
+    assert dump(path) == before
+    (found,) = cat.groups("live-pair")
+    assert (found.id, found.key, found.details) == (
+        group,
+        PHOTO.source_key,
+        {"method": "content-id"},
+    )
+    assert cat.group_members(group) == [(still, "still", 0), (motion, "motion", 1)]
+    cat.upsert_group("live-pair", PHOTO.source_key, {"method": "name-time"})
+    assert cat.groups("live-pair")[0].details == {"method": "name-time"}
+    cat.set_group_members(group, [(still, "still", 0)])
+    assert cat.group_members(group) == [(still, "still", 0)]
+    assert cat.groups("duplicate") == []
+
+
+def test_flags_are_added_without_rewriting_unchanged_items(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO)
+    cat.add_flags(item_id, {"live-photo-still"})
+    before = dump(path)
+
+    cat.add_flags(item_id, {"live-photo-still", "edited"})
+
+    assert dump(path) == before
+    stored = cat.get_item("google", PHOTO.source_key)
+    assert stored is not None
+    assert stored.flags == PHOTO.flags | {"live-photo-still"}
+
+
+def test_items_can_be_fetched_by_id(cat: Catalogue) -> None:
+    item_id = cat.upsert_item(PHOTO)
+
+    assert cat.item(item_id) == PHOTO.with_id(item_id)
+    with pytest.raises(KeyError):
+        cat.item(item_id + 1)

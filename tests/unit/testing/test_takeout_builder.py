@@ -428,3 +428,11 @@ def test_copy_of_an_item_without_sidecar_has_none(builder: TakeoutBuilder) -> No
 
     assert copy.sidecar is None
     assert list(builder.files()) == ["Takeout/archive_browser.html", original.path, copy.path]
+
+
+def test_live_photo_motion_carries_a_content_identifier(builder: TakeoutBuilder) -> None:
+    still, motion = builder.live_photo("Photos from 2019", "IMG_2001", taken=TAKEN)
+
+    assert motion.content_id is not None
+    assert still.content_id == motion.content_id
+    assert builder.manifest().item(still.path).content_id == motion.content_id

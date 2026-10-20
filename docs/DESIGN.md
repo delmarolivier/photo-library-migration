@@ -54,6 +54,25 @@ is about 600 GB (12 × 50 GB) on the MacBook Air's external drive.
   `People/<name>` keywords (`keywords` table, replaced as a set per prefix). Catalogue v3 adds
   `albums`, `album_members`, `item_copies`, `keywords` and `items.google_url`.
 
+### Live Photos (M1-06)
+
+`photomigrate ingest` runs a second stage, `live-photos`, over the catalogue
+(`ingest.livephotos`):
+
+- **Stills** are HEIC/HEIF/JPEG files that are neither edits nor Google creations. **Motion
+  candidates** are MOV/MP4 clips of 3.5 s or less.
+- **Pairing order:** Apple's `ContentIdentifier` first (catalogue v4 `items.content_id`).
+  Exiftool reads it from the still's Apple MakerNotes or from the clip's `Keys:ContentIdentifier`.
+  Then the same folder and name stem (including `(N)`) with capture times at most 3 s apart
+  (`dates.moment_gap`, which allows for offset-less EXIF). If a time is unknown, the name
+  alone decides. Closest pairs win, and each file pairs once.
+- **Storage:** pairs become `live-pair` groups (key = the still's path, members still/motion),
+  and the items are flagged `live-photo-still` / `live-photo-motion`.
+- **Unpaired candidates** are clips that carry an identifier or have a same-named still, but no
+  partner. They're flagged `unpaired-motion` for review. Other short clips are ordinary videos.
+- **Fixture limit:** fixtures embed the identifier only in the clip. exiftool can't create
+  Apple MakerNotes, so the still's copy can't be faked.
+
 ## Catalogue and stage runner (M1-03)
 
 ### Catalogue (`photomigrate.catalogue`)

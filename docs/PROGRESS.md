@@ -2,14 +2,22 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M1-05] CLA-77 (albums, copies, favourites, captions, people keywords)
-- Next issue: [M1-06] CLA-78 (Live Photo pairing)
+- Last completed issue: [M1-06] CLA-78 (Live Photo pairing). Milestone 1's code is complete.
+- Next issue: [M2-01] CLA-79 (iCloud library indexer, read-only). This needs the Air with the
+  Photos library on the external drive, Full Disk Access for `sshd`, and Delmar's go-ahead.
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
     download the 12 Takeout parts onto it before the Google links expire.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M1-06
+- Live Photo pairing (`ingest.livephotos`, the `live-photos` stage run by `ingest`).
+  Catalogue v4 adds `content_id`, the groups API and `add_flags`. `dates.moment_gap` and
+  `same_moment` are shared with the date policy.
+- Tests: 508, 100%. The pairing property test passed at 5,000 examples.
+- Deferred to M2-02: marking a Google pair as a duplicate when iCloud already has that Live Photo.
+
 ### 2026-10-20: session 1 (continued): real-sample checks and M1-05
 - Real-sample smoke test (approved by Delmar). It ran on this work Mac from `data-in/` into
   /tmp only; the zips were unchanged.

@@ -129,8 +129,12 @@ def encode_video(
     *,
     fps: int = 10,
     created: datetime | None = None,
+    content_id: str | None = None,
 ) -> bytes:
-    """A real H.264 clip in an MP4 or QuickTime container."""
+    """A real H.264 clip in an MP4 or QuickTime container.
+
+    ``content_id`` sets Apple's Live Photo key (``com.apple.quicktime.content.identifier``).
+    """
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise MediaToolMissingError(
@@ -150,6 +154,11 @@ def encode_video(
         ]  # fmt: skip
         if created:
             args += ["-metadata", f"creation_time={utc(created):%Y-%m-%dT%H:%M:%SZ}"]
+        if content_id:
+            args += [
+                "-movflags", "use_metadata_tags",
+                "-metadata", f"com.apple.quicktime.content.identifier={content_id}",
+            ]  # fmt: skip
         # Fixed argv built from our own values; no shell.
         subprocess.run([*args, str(out)], input=raw, check=True, capture_output=True)  # noqa: S603
         return out.read_bytes()
