@@ -51,3 +51,24 @@ def test_every_face_in_a_group_is_found(osxphotos_libraries: Path) -> None:
 
 def test_a_photo_without_people_has_no_faces(osxphotos_libraries: Path) -> None:
     assert read(osxphotos_libraries, TULIPS) == []
+
+
+def test_a_picture_vision_cannot_read_has_no_face_measurement(
+    osxphotos_libraries: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import Vision
+
+    class Refusing:
+        @classmethod
+        def alloc(cls) -> "Refusing":
+            return cls()
+
+        def initWithData_options_(self, data: object, options: object) -> "Refusing":  # noqa: N802
+            return self
+
+        def performRequests_error_(self, requests: object, error: object) -> tuple[bool, str]:  # noqa: N802
+            return False, "unreadable"
+
+    monkeypatch.setattr(Vision, "VNImageRequestHandler", Refusing)
+
+    assert read(osxphotos_libraries, WEDDING) is None

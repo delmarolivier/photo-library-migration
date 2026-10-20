@@ -38,7 +38,9 @@ class Face:
 
 
 class FaceReader(Protocol):
-    def read(self, image: Image.Image) -> list[Face]: ...
+    def read(self, image: Image.Image) -> list[Face] | None:
+        """The faces in the picture, or ``None`` if it could not be read."""
+        ...
 
 
 def _centre(box: Box) -> tuple[float, float]:
@@ -110,7 +112,7 @@ class VisionFaces:
             {Quartz.CIDetectorAccuracy: Quartz.CIDetectorAccuracyHigh},
         )
 
-    def read(self, image: Image.Image) -> list[Face]:
+    def read(self, image: Image.Image) -> list[Face] | None:
         import Quartz
         import Vision
         from Foundation import NSData
@@ -122,9 +124,9 @@ class VisionFaces:
 
         handler = Vision.VNImageRequestHandler.alloc().initWithData_options_(data, {})
         request = Vision.VNDetectFaceCaptureQualityRequest.alloc().init()
-        done, error = handler.performRequests_error_([request], None)
-        if not done:
-            raise RuntimeError(f"Vision could not read the picture: {error}")
+        done, _ = handler.performRequests_error_([request], None)
+        if not done:  # one odd picture must not stop ingest: it is left unmeasured
+            return None
         vision = [
             (_box(face.boundingBox()), round(float(face.faceCaptureQuality()), 4))
             for face in request.results() or ()

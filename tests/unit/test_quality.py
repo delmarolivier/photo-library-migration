@@ -5,8 +5,18 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageEnhance, ImageFilter
 
-from photomigrate.hashing import sample_video, signature_of
-from photomigrate.quality import measure_photo, measure_video, photo_metrics, video_metrics
+from photomigrate.embedding import to_bytes
+from photomigrate.faces import faces_to_json
+from photomigrate.hashing import open_picture, sample_video, signature_of
+from photomigrate.quality import (
+    PhotoMeasurement,
+    measure_photo,
+    measure_video,
+    photo_metrics,
+    video_metrics,
+)
+from photomigrate.testing.embedder import ThumbnailEmbedder
+from photomigrate.testing.faces import ONE_FACE, FixedFaces
 from photomigrate.testing.media import encode_image, encode_video, synthetic_image, video_frames
 
 
@@ -77,7 +87,11 @@ def test_undecodable_files_have_no_metrics(tmp_path: Path) -> None:
     (tmp_path / "x.jpg").write_bytes(b"nope")
 
     assert photo_metrics(tmp_path / "x.jpg") is None
-    assert measure_photo(tmp_path / "x.jpg") == (None, None)
+    assert measure_photo(tmp_path / "x.jpg") == PhotoMeasurement()
+    assert (
+        measure_photo(tmp_path / "x.jpg", embedder=ThumbnailEmbedder(), faces=FixedFaces())
+        == PhotoMeasurement()
+    )
 
 
 def test_hashes_and_metrics_come_from_one_decode(tmp_path: Path) -> None:
@@ -85,7 +99,31 @@ def test_hashes_and_metrics_come_from_one_decode(tmp_path: Path) -> None:
 
     path = jpeg(tmp_path, "a.jpg", synthetic_image(8, size=(1600, 1200)))
 
-    assert measure_photo(path) == (image_hashes(path), photo_metrics(path))
+    measured = measure_photo(path)
+
+    assert (measured.hashes, measured.metrics) == (image_hashes(path), photo_metrics(path))
+
+
+def test_the_embedding_and_faces_come_from_the_same_upright_picture(tmp_path: Path) -> None:
+    path = jpeg(tmp_path, "a.jpg", synthetic_image(8, size=(1600, 1200)))
+    embedder, faces = ThumbnailEmbedder(), FixedFaces()
+    picture = open_picture(path)
+    assert picture is not None
+
+    measured = measure_photo(path, embedder=embedder, faces=faces)
+
+    assert measured.embedding == to_bytes(embedder.embed(picture.image))
+    assert measured.faces == faces_to_json(ONE_FACE)
+    assert [image.size for image in faces.seen] == [(1024, 768)]
+
+
+def test_without_an_embedder_or_face_reader_neither_is_measured(tmp_path: Path) -> None:
+    path = jpeg(tmp_path, "a.jpg", synthetic_image(8))
+
+    measured = measure_photo(path)
+
+    assert measured.hashes is not None
+    assert (measured.embedding, measured.faces) == (None, None)
 
 
 def clip(tmp_path: Path, frames: list[Image.Image], name: str = "c.mp4") -> Path:

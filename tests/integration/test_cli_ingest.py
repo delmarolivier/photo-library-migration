@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from photomigrate.catalogue import Catalogue
 from photomigrate.cli import app
+from photomigrate.faces import face_reader
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.testing.takeout import TakeoutManifest
 
@@ -90,3 +92,17 @@ def test_the_default_time_zone_is_this_machines(
 
     assert result.exit_code == 1
     assert "no takeout" in result.output
+
+
+def test_ingest_embeds_photos_and_reads_faces_where_vision_is(
+    standard_takeout_zips: TakeoutManifest, tmp_path: Path
+) -> None:
+    result = invoke(tmp_path, str(standard_takeout_zips.zips[0].parent), "--apply")
+
+    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+    with Catalogue.open(tmp_path / "catalogue.sqlite") as catalogue:
+        photos = [i for i in catalogue.items() if i.kind == "photo" and i.phash]
+    assert photos
+    assert all(i.embedding is not None for i in photos)
+    vision = face_reader() is not None
+    assert all((i.faces is not None) == vision for i in photos)

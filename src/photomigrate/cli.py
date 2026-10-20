@@ -15,6 +15,8 @@ from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStag
 from photomigrate.analyse.edited import EditedVersionsStage
 from photomigrate.analyse.quality import QualityStage
 from photomigrate.config import Config, ConfigError, load_config
+from photomigrate.embedding import default_embedder
+from photomigrate.faces import face_reader
 from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
@@ -112,12 +114,17 @@ def ingest(
     ] = False,
 ) -> None:
     """Catalogue every Google Photos item straight from the Takeout zips (read-only),
-    then pair split Live Photos."""
+    then pair split Live Photos.
+
+    Photos are also embedded with open_clip (its weights, about 600 MB, are downloaded on
+    first use) and, on macOS, read for faces with Apple Vision."""
     settings: Settings = ctx.obj
     zone = _zone(timezone)
     console = Console()
     try:
-        with IngestStage(takeout_dir, work_dir, zone=zone) as stage:
+        with IngestStage(
+            takeout_dir, work_dir, zone=zone, embedder=default_embedder(), faces=face_reader()
+        ) as stage:
             for step in (stage, LivePhotoStage()):
                 result = run_stage(
                     step, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
@@ -138,11 +145,12 @@ def index(
         bool, typer.Option("--apply", help="Catalogue the items (else a dry run).")
     ] = False,
 ) -> None:
-    """Catalogue the iCloud Photos library, read-only: hashes, dates, albums, scores."""
+    """Catalogue the iCloud Photos library, read-only: hashes, dates, albums, scores,
+    open_clip embeddings and Vision faces."""
     settings: Settings = ctx.obj
     console = Console()
     try:
-        with IndexStage(library) as stage:
+        with IndexStage(library, embedder=default_embedder(), faces=face_reader()) as stage:
             result = run_stage(
                 stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
             )

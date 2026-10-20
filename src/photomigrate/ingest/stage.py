@@ -5,7 +5,8 @@ the sidecars. That gives one ``ingest`` action per media file, plus ``flag-…``
 orphan sidecars and unknown files, so nothing is dropped silently.
 
 Apply, one action at a time: stream the item to a scratch file, hash it, measure its
-quality, read its embedded metadata, decide what to write later (``policy.decide``), and
+quality (plus, for photos, its embedding and faces when the stage has an embedder and a face
+reader), read its embedded metadata, decide what to write later (``policy.decide``), and
 record the item, its flags, its metadata plan and every date candidate. The zips are only
 ever read. Working copies are written at import time for approved items (M4-01).
 """
@@ -21,6 +22,8 @@ from types import TracebackType
 from typing import Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
+from photomigrate.embedding import Embedder
+from photomigrate.faces import FaceReader
 from photomigrate.hashing import bitrate
 from photomigrate.ingest.exif import ExifTool, can_write
 from photomigrate.ingest.names import Kind, media_kind, parse_media_name
@@ -37,7 +40,7 @@ from photomigrate.ingest.sidecars import (
 )
 from photomigrate.ingest.takeout import Entry, Takeout, open_takeout
 from photomigrate.quality import (
-    PhotoMetrics,
+    PhotoMeasurement,
     VideoMetrics,
     as_json,
     measure_photo,
@@ -49,10 +52,20 @@ from photomigrate.runner import Action, JSONValue
 class IngestStage:
     name = "ingest"
 
-    def __init__(self, takeout_dir: Path, work_dir: Path, *, zone: tzinfo) -> None:
+    def __init__(
+        self,
+        takeout_dir: Path,
+        work_dir: Path,
+        *,
+        zone: tzinfo,
+        embedder: Embedder | None = None,
+        faces: FaceReader | None = None,
+    ) -> None:
         self.takeout_dir = takeout_dir
         self.work_dir = work_dir
         self.zone = zone
+        self.embedder = embedder
+        self.faces = faces
         self._takeout: Takeout | None = None
         self._exiftool: ExifTool | None = None
 
@@ -184,12 +197,12 @@ class IngestStage:
         scratch.mkdir(parents=True, exist_ok=True)
         with self.takeout.local_copy(entry, scratch) as (copy, sha256):
             embedded = self.exiftool.read(copy)
-            hashes, signature = None, None
-            measured: PhotoMetrics | VideoMetrics | None
+            photo, signature = PhotoMeasurement(), None
+            video: VideoMetrics | None = None
             if details["kind"] == "photo":
-                hashes, measured = measure_photo(copy)
+                photo = measure_photo(copy, embedder=self.embedder, faces=self.faces)
             else:
-                signature, measured = measure_video(copy, embedded.duration)
+                signature, video = measure_video(copy, embedded.duration)
         raw = details.get("sidecar_data")
         sidecar = SidecarData.from_dict(raw) if isinstance(raw, dict) else None
         album = details.get("album")
@@ -230,9 +243,9 @@ class IngestStage:
             original_path=str(details["locator"]),
             sidecar_path=None if details["sidecar"] is None else str(details["sidecar"]),
             sha256=sha256,
-            phash=hashes.phash if hashes else None,
-            dhash=hashes.dhash if hashes else None,
-            phash_fine=hashes.fine if hashes else None,
+            phash=photo.hashes.phash if photo.hashes else None,
+            dhash=photo.hashes.dhash if photo.hashes else None,
+            phash_fine=photo.hashes.fine if photo.hashes else None,
             width=embedded.width,
             height=embedded.height,
             duration=embedded.duration,
@@ -249,7 +262,9 @@ class IngestStage:
             metadata_plan=json.dumps(plan.to_dict(), sort_keys=True, ensure_ascii=False),
             google_url=url,
             content_id=embedded.content_id,
-            quality=as_json(measured),
+            quality=as_json(photo.metrics or video),
+            embedding=photo.embedding,
+            faces=photo.faces,
         )
         item_id = catalogue.upsert_item(item)
         if album_id is not None:

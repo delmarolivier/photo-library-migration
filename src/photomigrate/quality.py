@@ -13,6 +13,9 @@ which makes sharpness comparable across camera resolutions:
 * ``contrast``: the luminance standard deviation (near 0 means a flat frame: a pocket shot);
 * ``megapixels`` and ``short_side``, from the full-size image.
 
+The same decode gives the photo's open_clip embedding and its faces (``embedding``, ``faces``)
+when the caller passes an embedder and a face reader (``measure_photo``), for best-shot.
+
 Videos use the frames already sampled for their signature: mean ``brightness``, and
 ``motion``, the mean absolute difference between consecutive frames.
 """
@@ -29,6 +32,8 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import laplace
 
+from photomigrate.embedding import Embedder, to_bytes
+from photomigrate.faces import FaceReader, faces_to_json
 from photomigrate.hashing import (
     ImageHashes,
     Picture,
@@ -89,12 +94,32 @@ def photo_metrics(path: Path) -> PhotoMetrics | None:
     return None if picture is None else picture_metrics(picture)
 
 
-def measure_photo(path: Path) -> tuple[ImageHashes | None, PhotoMetrics | None]:
-    """A photo's perceptual hashes and metrics, from one decode. ``None``s if it is not one."""
+@dataclass(frozen=True)
+class PhotoMeasurement:
+    """Everything measured from one decode of a photo; ``None`` where not measured."""
+
+    hashes: ImageHashes | None = None
+    metrics: PhotoMetrics | None = None
+    embedding: bytes | None = None
+    """As stored in the catalogue (``embedding.to_bytes``)."""
+    faces: str | None = None
+    """As stored in the catalogue (``faces.faces_to_json``)."""
+
+
+def measure_photo(
+    path: Path, *, embedder: Embedder | None = None, faces: FaceReader | None = None
+) -> PhotoMeasurement:
+    """A photo's hashes and metrics, plus its embedding and faces when given an ``embedder``
+    and a ``faces`` reader, from one decode. All ``None`` if it cannot be decoded."""
     picture = open_picture(path)
     if picture is None:
-        return None, None
-    return picture_hashes(picture), picture_metrics(picture)
+        return PhotoMeasurement()
+    return PhotoMeasurement(
+        hashes=picture_hashes(picture),
+        metrics=picture_metrics(picture),
+        embedding=to_bytes(embedder.embed(picture.image)) if embedder else None,
+        faces=faces_to_json(faces.read(picture.image)) if faces else None,
+    )
 
 
 def video_metrics(frames: Sequence[Image.Image]) -> VideoMetrics:

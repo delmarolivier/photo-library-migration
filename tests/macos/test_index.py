@@ -9,8 +9,10 @@ from typer.testing import CliRunner
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.cli import app
+from photomigrate.faces import VisionFaces, faces_from_json
 from photomigrate.index.icloud import IndexStage
 from photomigrate.runner import RunResult, run_stage
+from photomigrate.testing.embedder import ThumbnailEmbedder
 
 pytestmark = pytest.mark.macos
 
@@ -165,3 +167,40 @@ def test_the_cli_rejects_something_that_is_not_a_photos_library(tmp_path: Path) 
 
     assert result.exit_code == 1
     assert "not a Photos library" in result.output
+
+
+def test_photos_get_an_embedding_and_their_faces(test_library: Path, tmp_path: Path) -> None:
+    with IndexStage(test_library, embedder=ThumbnailEmbedder(), faces=VisionFaces()) as stage:
+        run_stage(
+            stage, catalogue_path=tmp_path / "catalogue.sqlite", plan_dir=tmp_path / "plans",
+            apply=True,
+        )  # fmt: skip
+
+    stored = icloud_items(tmp_path)
+    photos = [i for i in stored.values() if i.kind == "photo" and i.sha256]
+    assert all(i.embedding is not None for i in photos)
+    assert all(faces_from_json(i.faces) is not None for i in photos)
+    by_name = {name.lower(): item for name, item in stored.items()}
+    wedding = next(item for name, item in by_name.items() if "wedding" in name)
+    tulips = next(item for name, item in by_name.items() if "tulips" in name)
+    (face,) = faces_from_json(wedding.faces) or []
+    assert face.eyes_open is True
+    assert faces_from_json(tulips.faces) == []
+
+
+def test_without_an_embedder_or_face_reader_neither_is_stored(
+    test_library: Path, tmp_path: Path
+) -> None:
+    index(test_library, tmp_path)
+
+    assert all(i.embedding is None and i.faces is None for i in icloud_items(tmp_path).values())
+
+
+def test_the_cli_embeds_photos_and_reads_their_faces(test_library: Path, tmp_path: Path) -> None:
+    args = ["--catalogue", str(tmp_path / "catalogue.sqlite"), "--plan-dir", str(tmp_path / "p")]
+
+    result = CliRunner().invoke(app, [*args, "index", str(test_library), "--apply"])
+
+    assert result.exit_code == 0, result.output
+    photos = [i for i in icloud_items(tmp_path).values() if i.kind == "photo" and i.sha256]
+    assert all(i.embedding is not None and i.faces is not None for i in photos)
