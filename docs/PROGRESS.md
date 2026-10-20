@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M2-01] CLA-79 (iCloud library indexer, read-only).
-- Next issue: [M2-02] CLA-80 (photo dedupe: exact and perceptual).
+- Last completed issue: [M2-02] CLA-80 (photo dedupe: exact and perceptual).
+- Next issue: [M2-03] CLA-81 (video dedupe).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
@@ -15,6 +15,13 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M2-02
+- `analyse.dedupe_photo` plus `photomigrate analyse`; a 256-bit pHash (`phash_fine`, catalogue v6);
+  Google photos are now hashed at ingest; `synthetic_image(jitter=…)` gives "a moment later" shots.
+- The thresholds came from measurements (see DESIGN). The same-moment tolerance is 1 s, because
+  copies keep identical EXIF times.
+- Tests: 619, 100%.
+
 ### 2026-10-20: session 1 (continued): M2-01
 - `index.icloud` plus `photomigrate index`; `hashing` (SHA-256, pHash/dHash); `safety.ReadOnlyGuard`
   and `announce_write`; catalogue v5 (scores, timezone).

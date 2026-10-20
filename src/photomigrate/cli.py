@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from photomigrate import __version__
+from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
@@ -134,6 +135,38 @@ def index(
     warn_missing_originals([a for a in result.plan.actions if a.kind == "index-missing"], console)
 
 
+@app.command()
+def analyse(
+    ctx: typer.Context,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Store the proposals (else a dry run).")
+    ] = False,
+    candidate_phash: Annotated[
+        int, typer.Option(help="Max 64-bit pHash distance to consider a pair.")
+    ] = DedupeConfig.candidate_phash,
+    fine_max: Annotated[
+        int, typer.Option(help="Max 256-bit pHash distance for a near-duplicate.")
+    ] = DedupeConfig.fine_max,
+    dhash_max: Annotated[int, typer.Option(help="Max dHash distance for a near-duplicate.")] = (
+        DedupeConfig.dhash_max
+    ),
+) -> None:
+    """Propose duplicate groups (exact and near) with keepers. Proposals only; review decides."""
+    settings: Settings = ctx.obj
+    config = DedupeConfig(candidate_phash=candidate_phash, fine_max=fine_max, dhash_max=dhash_max)
+    try:
+        result = run_stage(
+            DedupeStage(config),
+            catalogue_path=settings.catalogue,
+            plan_dir=settings.plan_dir,
+            apply=apply,
+        )
+    except StageFailedError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    render_result(result, Console())
+
+
 def warn_missing_originals(missing: list[Action], console: Console, limit: int = 20) -> None:
     """List the items whose originals are only in iCloud, so they are not silently skipped."""
     if not missing:
@@ -150,9 +183,6 @@ def warn_missing_originals(missing: list[Action], console: Console, limit: int =
 
 
 _STAGES = {
-    "analyse": (
-        "Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location."
-    ),
     "review": "Local review gallery; decisions are stored in the catalogue.",
     "import": "Import approved items into Photos (dry-run unless --apply).",
     "report": "Reconciliation report: every Google item accounted for.",

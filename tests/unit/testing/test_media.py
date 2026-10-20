@@ -187,3 +187,12 @@ def test_video_content_identifier_is_written_as_a_quicktime_key(
     tags = ffprobe(data, ".mov", tmp_path_factory)["format"]["tags"]  # type: ignore[index]
 
     assert tags["com.apple.quicktime.content.identifier"] == "3F2504E0-4F89-41D3"
+
+
+def test_jitter_moves_the_shapes_a_little() -> None:
+    still = synthetic_image(5)
+
+    assert synthetic_image(5, jitter=0).tobytes() == still.tobytes()
+    moved = synthetic_image(5, jitter=3)
+    assert moved.tobytes() != still.tobytes()
+    assert mean_difference(still, moved) < mean_difference(still, synthetic_image(6))

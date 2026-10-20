@@ -2,6 +2,35 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Photo dedupe (M2-02)
+
+`photomigrate analyse [--apply]` runs `dedupe-photos` (`analyse.dedupe_photo`) over every
+catalogued photo, Google and iCloud. Excluded: Google `edited` copies (M2-04 links them) and
+`google-creation`s (clutter queue). Thresholds were measured on generated scenes:
+
+| Pair | 64-bit pHash | 256-bit pHash (`phash_fine`) |
+|---|---|---|
+| resized / recompressed (q25) / HEIC↔JPEG copy | ≤ 4 | ≤ 8 |
+| 95% crop | from 2 | ≥ 18 |
+| 90% crop | from 2 | ≥ 54 |
+| the same scene a moment later (shapes moved 1%) | from 0 | from 8 |
+
+Rules, all configurable (`DedupeConfig`, CLI flags):
+- **Edges:** same SHA-256 (`exact`), or same Live Photo `content_id` (`content-id`), or a
+  `near` match. A near match needs:
+  - 64-bit pHash ≤ 8 (candidate search: numpy brute force with `bitwise_count`, about 50 s per
+    200k photos);
+  - then 256-bit pHash ≤ 12 and dHash ≤ 10;
+  - aspect ratio within 2% (rotation ignored);
+  - if both files carry an EXIF time, the same moment within 1 s.
+- **Groups:** edges are merged into groups (union-find).
+- **Keeper order:** resolution, then metadata (date, GPS, caption), then iCloud, then the key.
+- **Stored as proposals only:** `groups(kind='duplicate')` with member roles `keeper` /
+  `duplicate`, plus `motion` for the clip of a Live Photo still, so a pair is handled as a pair.
+  Groups that no longer hold are retired. No `decisions` are written; review (M3-06) confirms.
+- **Known limit:** burst frames taken within the same second have identical EXIF seconds. If
+  they're also near-identical visually, they may be proposed as duplicates.
+
 ## iCloud index (M2-01)
 
 `photomigrate index <Library.photoslibrary> [--apply]` (`index.icloud`, macOS only, osxphotos).
