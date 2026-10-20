@@ -85,5 +85,5 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["exiftool", "exiftool.*"]
+module = ["exiftool", "exiftool.*", "imagehash", "imagehash.*", "osxphotos", "osxphotos.*"]
 ignore_missing_imports = true
