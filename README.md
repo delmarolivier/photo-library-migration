@@ -71,7 +71,7 @@ with their defaults. Unknown settings are errors.
 | `index` | Read-only index of the iCloud library: hashes, quality, embeddings, faces, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
 | `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); date audit: missing, placeholder, future, conflicting and out-of-sequence dates batched by camera, folder and name, with suggestions, and the review's answers applied (accept, a date, a year, a shift); clutter queue: screenshots, receipts and documents, memes, messaging forwards and Google creations, each with a score and its evidence; location backfill proposals from the same camera's shots nearby in time or a Google Maps Timeline export (`--timeline`), written only once approved |
 | `review` | Local gallery on 127.0.0.1 with one queue per question (duplicates, best shot, edited versions, dates, clutter, quality, locations, unmatched); thumbnails from the zips and the library; keyboard shortcuts; every answer saved at once, nothing else changed |
-| `import` | Dry run by default; `--apply` imports approved Google items in batches into "From Google" (albums, favourites, captions, keywords, Live Photos as pairs) and applies answered dates and approved places to existing iCloud items; resumable, never imports an item twice |
+| `import` | Dry run by default; `--apply` imports approved Google items in batches into "From Google" (albums, favourites, captions, keywords, Live Photos as pairs) and applies answered dates and approved places to existing iCloud items; puts the iCloud items the review rejected in "To Delete" (never deletes); resumable, never imports an item twice |
 | `report` | Reconciliation report: every Google item accounted for |
 
 Every stage that writes is a **dry run by default**. It prints the plan as a table and saves it
@@ -95,7 +95,10 @@ Safety rails (details in [docs/DESIGN.md](docs/DESIGN.md)):
 - **Personal data stays out of git**: real Takeout samples live in `data-in/` and the catalogue in
   `data/`. Both are gitignored, blocked by a pre-commit hook, and checked in CI.
 - **No-delete check**: `uv run photomigrate-no-delete-check src` fails if production code calls a
-  delete or trash API. It runs in pre-commit and CI.
+  delete or trash API, looks one up by name, scripts Photos to delete, or moves a file. It runs
+  in pre-commit and CI. At runtime, `import --apply` keeps the Takeout read-only and refuses
+  any removal in the library, and a test runs the whole pipeline with every delete API rigged
+  to fail.
 
 CI (GitHub Actions): `linux` and `no-delete-check` on every PR and on `main`; `macos` and the
 combined `coverage` gate on PRs only. `main` is protected and only accepts squash-merged PRs.

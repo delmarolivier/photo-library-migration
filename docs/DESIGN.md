@@ -2,6 +2,35 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## "To Delete" and the no-delete guarantee (M4-02)
+
+- **Staging** (part of `photomigrate import`): `stage-to-delete` puts every existing iCloud
+  item the review rejected (`outcomes.to_delete`) in the album "To Delete". That covers a
+  confirmed duplicate of another item, a best-shot loser, and clutter, quality or unmatched
+  rejects. Delmar deletes them by hand.
+  - `unstage-to-delete` takes an item out when its rejection is withdrawn, so the album is
+    always exactly the rejections. Taking an asset out of an album never deletes it.
+  - Catalogue v15 `staged` remembers what is in the album and why.
+  - Rejected Google items are simply not imported.
+- **At runtime:**
+  - `safety.NoDeleteGuard(roots)` is an audit-hook guard. It refuses removing (`os.remove`,
+    `os.rmdir`, `shutil.rmtree`), renaming and moving (`os.rename`/`os.replace`,
+    `shutil.move`) anything inside its roots; adding files is fine.
+  - `import --apply` runs under `ReadOnlyGuard(takeout)` and `NoDeleteGuard([library])`.
+  - `tests/integration/test_no_delete_pipeline.py` runs the whole pipeline (ingest, analyse,
+    a review, confirm-backup, import, staging) on the standard Takeout with every delete API
+    rigged: `os.remove`, `os.unlink`, `os.rmdir`, `os.removedirs`, `shutil.rmtree`,
+    `Path.unlink` and `Path.rmdir` raise on the Takeout or the library, and Photos' delete
+    commands always raise. A `NoDeleteGuard` watches both folders. It checks nothing was
+    refused, the zips are byte-identical, and the rejected iCloud item is in "To Delete",
+    not gone.
+- **Statically** (`photomigrate-no-delete-check`, CI): it now also catches
+  `getattr(x, "remove")` and other denied names looked up by string, and AppleScript or JXA
+  snippets for Photos that `delete`. The "To Delete" album name doesn't count; the command is
+  lowercase. It also catches moves and renames (`os.rename`, `os.replace`, `shutil.move`,
+  `.rename(`) unless the line says `# no-delete-check: allow (why)`. Only the Takeout
+  extractor's move of its own staged copy carries that. Deletes can never be allowed.
+
 ## Import (M4-01)
 
 `photomigrate import --takeout DIR [--library PATH --apply]` (`importer.stage`). It's a dry
@@ -597,5 +626,4 @@ followed by asset/photo/media/item/file, plus `os.remove`. The phrase "to delete
 "To Delete" album) is allowed. Strings are not scanned, so SQL `DELETE FROM` on catalogue
 rows is fine.
 
-Known gaps for M4-02 to close: AppleScript/JXA `delete` inside strings passed to `osascript`,
-dynamic access (`getattr(os, "remove")`), and moves or renames of source files.
+M4-02 closed the known gaps (scripts, `getattr`, moves and renames): see "To Delete" above.

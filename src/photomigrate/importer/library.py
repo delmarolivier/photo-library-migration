@@ -32,6 +32,10 @@ class PhotosLibrary(Protocol):
 
     def add_to_album(self, album: str, uuids: Sequence[str]) -> None: ...
 
+    def remove_from_album(self, album: str, uuids: Sequence[str]) -> None:
+        """Take assets out of an album; they stay in the library."""
+        ...
+
     def set_details(
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]
     ) -> None:
@@ -87,6 +91,11 @@ class PhotoscriptLibrary:
 
     def add_to_album(self, album: str, uuids: Sequence[str]) -> None:
         self._album(album).add([self._script.Photo(uuid) for uuid in uuids])
+
+    def remove_from_album(self, album: str, uuids: Sequence[str]) -> None:
+        found = self._photos.album(album)
+        if found is not None:
+            found.remove([self._script.Photo(uuid) for uuid in uuids])
 
     def set_details(
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]

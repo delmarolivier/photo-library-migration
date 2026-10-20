@@ -180,3 +180,19 @@ def test_the_no_delete_guard_is_off_once_left(tmp_path: Path) -> None:
 
     target.unlink()
     assert not target.exists()
+
+
+def test_the_no_delete_guard_judges_each_kind_of_event(tmp_path: Path) -> None:
+    from photomigrate.safety import NoDeleteGuard
+
+    guard = NoDeleteGuard([tmp_path / "media"])
+    inside, outside = str(tmp_path / "media" / "a.jpg"), str(tmp_path / "b.jpg")
+
+    for event, args in [("os.remove", (inside, None)), ("shutil.rmtree", (inside, None, None)),
+                        ("os.rename", (outside, inside, None, None)),
+                        ("shutil.move", (inside, outside))]:  # fmt: skip
+        with pytest.raises(ForbiddenPathError):
+            guard.check(event, args)
+    guard.check("os.remove", (outside, None))
+    guard.check("open", (inside, "wb", 0))
+    assert len(guard.violations) == 4

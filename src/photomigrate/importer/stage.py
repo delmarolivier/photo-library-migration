@@ -7,6 +7,9 @@ Plan (a dry run unless ``--apply``):
   of originals.
 * ``set-date`` and ``set-location``: answered dates and approved places for existing iCloud
   items (Photos changes them in place, like osxphotos timewarp).
+* ``stage-to-delete`` and ``unstage-to-delete``: keep the album "To Delete" exactly the
+  existing iCloud items the review rejected (``outcomes.to_delete``). Delmar deletes them by
+  hand; taking an asset out of an album never deletes it.
 
 Applying a batch streams each original out of its zip into a scratch folder, writes the
 working copy with exiftool (``-o``: the original is only read) using ``planned_write`` plus
@@ -33,12 +36,13 @@ from photomigrate.analyse.locations import INFERRED_KEYWORD, approved_location
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.config import ImportConfig
 from photomigrate.importer.library import PhotosLibrary
-from photomigrate.importer.outcomes import outcomes
+from photomigrate.importer.outcomes import outcomes, to_delete
 from photomigrate.ingest.exif import ExifTool, MetadataWrite, can_write
 from photomigrate.ingest.takeout import Entry, Takeout, open_takeout
 from photomigrate.runner import Action, JSONValue
 
 FROM_GOOGLE = "From Google"
+TO_DELETE = "To Delete"
 FROM_GOOGLE_KEYWORD = "from-google"
 _GIGABYTE = 1_000_000_000
 
@@ -124,6 +128,7 @@ class ImportStage:
         if batch:
             yield self._batch(first, batch, size)
         yield from self._fixes(catalogue)
+        yield from self._staging(catalogue)
 
     def _batch(self, first: int, assets: list[JSONValue], size: int) -> Action:
         return Action("import-batch", f"batch-{first:06d}", {"assets": assets, "bytes": size})
@@ -145,6 +150,16 @@ class ImportStage:
                 where: dict[str, JSONValue] = {"latitude": place[0], "longitude": place[1]}
                 yield Action("set-location", item.source_key, where)
 
+    def _staging(self, catalogue: Catalogue) -> Iterator[Action]:
+        wanted = to_delete(catalogue)
+        staged = catalogue.staged()
+        for item_id, reason in sorted(wanted.items()):
+            if staged.get(item_id) != reason:
+                uuid = catalogue.item(item_id).source_key
+                yield Action("stage-to-delete", uuid, {"reason": reason})
+        for item_id in sorted(staged.keys() - wanted.keys()):
+            yield Action("unstage-to-delete", catalogue.item(item_id).source_key)
+
     # -- apply ------------------------------------------------------------------------------
 
     def apply(self, action: Action, catalogue: Catalogue) -> None:
@@ -153,6 +168,14 @@ class ImportStage:
         if action.kind == "set-date":
             self.library.set_date(action.target, datetime.fromisoformat(str(action.details["to"])))
             self._keywords(catalogue, action.target, cast(list[str], action.details["keywords"]))
+        elif action.kind in ("stage-to-delete", "unstage-to-delete"):
+            item_id = cast(int, catalogue.item_for_key("icloud", action.target))
+            if action.kind == "stage-to-delete":
+                self.library.add_to_album(TO_DELETE, [action.target])
+                catalogue.set_staged(item_id, str(action.details["reason"]))
+            else:
+                self.library.remove_from_album(TO_DELETE, [action.target])
+                catalogue.set_staged(item_id, None)
         elif action.kind == "set-location":
             details = action.details
             latitude, longitude = (
