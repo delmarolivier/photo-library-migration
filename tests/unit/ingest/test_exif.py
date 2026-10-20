@@ -279,3 +279,16 @@ def test_closing_twice_is_harmless() -> None:
 def test_the_quicktime_epoch_means_no_date(tags: dict[str, str]) -> None:
     # Older exiftool versions (Ubuntu's) report an unset QuickTime date as its 1904 epoch.
     assert embedded_from_tags(tags).taken is None
+
+
+def test_content_identifiers_are_read_from_apple_and_quicktime_tags(
+    exiftool: ExifTool, tmp_path: Path
+) -> None:
+    clip = tmp_path / "IMG_2001.MOV"
+    clip.write_bytes(
+        encode_video(video_frames(1, 1.5), "mov", created=TAKEN, content_id="3F2504E0-4F89-41D3")
+    )
+
+    assert exiftool.read(clip).content_id == "3F2504E0-4F89-41D3"
+    assert embedded_from_tags({"Apple:ContentIdentifier": "ABC"}).content_id == "ABC"
+    assert exiftool.read(make(tmp_path, "a.jpg")).content_id is None

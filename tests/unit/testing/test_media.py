@@ -177,3 +177,13 @@ def test_camera_exif_without_a_capture_time() -> None:
 
     assert exif[ExifTags.Base.Model] == "iPhone 8"
     assert ExifTags.Base.DateTimeOriginal not in exif.get_ifd(ExifTags.IFD.Exif)
+
+
+def test_video_content_identifier_is_written_as_a_quicktime_key(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    data = encode_video(video_frames(1), "mov", content_id="3F2504E0-4F89-41D3")
+
+    tags = ffprobe(data, ".mov", tmp_path_factory)["format"]["tags"]  # type: ignore[index]
+
+    assert tags["com.apple.quicktime.content.identifier"] == "3F2504E0-4F89-41D3"
