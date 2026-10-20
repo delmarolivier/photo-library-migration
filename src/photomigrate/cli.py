@@ -18,6 +18,7 @@ from photomigrate.analyse.date_fixes import DateFixStage
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
 from photomigrate.analyse.edited import EditedVersionsStage
+from photomigrate.analyse.locations import LocationStage
 from photomigrate.analyse.quality import QualityStage
 from photomigrate.config import Config, ConfigError, load_config
 from photomigrate.embedding import default_embedder
@@ -36,6 +37,7 @@ from photomigrate.runner import (
     run_stage,
 )
 from photomigrate.text_regions import text_reader
+from photomigrate.timeline import TimelineError, load_timeline
 
 DEFAULT_WORK_DIR = Path("data/work")
 
@@ -201,6 +203,14 @@ def analyse(
     edited_policy: Annotated[
         EditedPolicyChoice, typer.Option(help="What to keep of an original and its Google edit.")
     ] = EditedPolicyChoice.pair,
+    timeline: Annotated[
+        Path | None,
+        typer.Option(help="A Google Maps Timeline export (iOS format) for location backfill."),
+    ] = None,
+    timezone: Annotated[
+        str | None,
+        typer.Option("--timezone", help="IANA zone of local times (default: this Mac's)."),
+    ] = None,
 ) -> None:
     """Link edits to originals, propose duplicate groups (photos and videos) with keepers,
     flag quality problems with scores (thresholds from --config), group similar shots,
@@ -212,6 +222,12 @@ def analyse(
     """
     settings: Settings = ctx.obj
     console = Console()
+    zone = _zone(timezone)
+    try:
+        places = None if timeline is None else load_timeline(timeline)
+    except TimelineError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     stages = (
         EditedVersionsStage(edited_policy.value),
         DedupeStage(
@@ -221,6 +237,7 @@ def analyse(
         QualityStage(settings.config.quality),
         BestShotStage(settings.config.best_shot),
         ClutterStage(settings.config.clutter, ZeroShot(default_embedder())),
+        LocationStage(settings.config.location, places, zone),
         DateFixStage(),
         DateAuditStage(now=datetime.now(UTC)),
     )

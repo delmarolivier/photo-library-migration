@@ -698,3 +698,28 @@ def test_an_items_clutter_category_is_replaced_and_cleared(cat: Catalogue, path:
 def test_clutter_belongs_to_an_item(cat: Catalogue) -> None:
     with pytest.raises(sqlite3.IntegrityError):
         cat.set_clutter(999, "meme", 0.6, {})
+
+
+def test_v13_adds_inferred_locations(tmp_path: Path) -> None:
+    path = tmp_path / "v12.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:12])
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.inferred_locations() == {}
+
+
+def test_an_inferred_location_is_replaced_and_retired(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO)
+    cat.set_inferred_location(item_id, (48.85, 2.35), "neighbour", {"from": ["a"]})
+    before = dump(path)
+
+    cat.set_inferred_location(item_id, (48.85, 2.35), "neighbour", {"from": ["a"]})
+
+    assert dump(path) == before
+    assert cat.inferred_locations() == {item_id: ((48.85, 2.35), "neighbour", {"from": ["a"]})}
+    cat.set_inferred_location(item_id, (1.0, 2.0), "timeline-visit", {})
+    assert cat.inferred_locations()[item_id][1] == "timeline-visit"
+    cat.set_inferred_location(item_id, None)
+    assert cat.inferred_locations() == {}
