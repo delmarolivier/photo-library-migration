@@ -126,7 +126,10 @@ def test_groups_merge_transitively(tmp_path: Path) -> None:
     (group,) = find_duplicates([a, b, c], DedupeConfig())
 
     assert set(group.members) == {a.id, b.id, c.id}
-    assert group.method == "mixed"
+    assert group.method == "near", "the method says how members match the keeper"
+    exact_keeper = replace(c, id=next(_ids), key="0-best", width=4000, height=3000)
+    (mixed,) = find_duplicates([a, b, c, exact_keeper], DedupeConfig())
+    assert mixed.method == "mixed"
 
 
 # --- precision: crops and other shots stay apart --------------------------------------------
@@ -300,3 +303,39 @@ def test_a_dhash_disagreement_alone_rejects_a_match(tmp_path: Path) -> None:
     )
 
     assert groups_of([a, b]) == []
+
+
+# --- precision fixes from the real-sample pixel check (2026-10-20) --------------------------
+
+
+def test_shots_one_second_apart_are_different_shots(tmp_path: Path) -> None:
+    # Real sample: every true duplicate with EXIF on both sides shares the exact EXIF second;
+    # the false positives were burst-style shots one second apart.
+    first = record(tmp_path, scene(70), taken=T)
+    second = record(tmp_path, scene(70, jitter=1), taken=T + timedelta(seconds=1))
+
+    assert groups_of([first, second]) == []
+
+
+def test_every_member_must_match_the_keeper_directly(tmp_path: Path) -> None:
+    keeper = record(tmp_path, scene(71), key="a-keeper")
+    link = replace(record(tmp_path, scene(72), key="b-link"), sha256=keeper.sha256)
+    chained = replace(record(tmp_path, scene(73), key="c-chained"), content_id="CI")
+    link = replace(link, content_id="CI")
+
+    (group,) = find_duplicates([keeper, link, chained], DedupeConfig())
+
+    assert set(group.members) == {keeper.id, link.id}, "c only matches b, not the keeper"
+
+
+def test_without_capture_times_the_fine_hash_must_be_closer(tmp_path: Path) -> None:
+    # Real sample: true duplicates lacking EXIF were within 2 bits; the one false positive was 10.
+    a = record(tmp_path, scene(80), taken=None)
+    b = replace(record(tmp_path, scene(80), quality=40, taken=None), fine=None)
+    loose = replace(b, id=next(_ids), key="loose", fine=f"{int(a.fine or '0', 16) ^ 0x3FF:064x}")
+
+    assert groups_of([a, b]) == [{a.id, b.id}]
+    assert groups_of([a, loose]) == []
+    assert groups_of([a, loose], DedupeConfig(fine_max_untimed=12)) == [{a.id, loose.id}]
+    timed = replace(loose, taken=T)
+    assert groups_of([replace(a, taken=T), timed]) == [{a.id, timed.id}], "with times, 12 is fine"

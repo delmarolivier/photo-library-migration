@@ -8,7 +8,7 @@ hold. It never touches the other stage's groups.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
@@ -52,20 +52,37 @@ class UnionFind:
         self.parent[root_b] = root_a
         self.kinds[root_a] = kinds
 
-    def groups(self, records: Sequence[Keyed], order: object) -> list[DuplicateGroup]:
-        """Groups of two or more, each sorted by ``order`` (best keeper first)."""
+    def components(self, records: Sequence[Keyed]) -> list[list[Keyed]]:
+        """Connected records, two or more at a time."""
         by_root: dict[int, list[Keyed]] = {}
         for record in records:
             by_root.setdefault(self.find(record.id), []).append(record)
-        result = []
-        for root, members in by_root.items():
-            if len(members) < 2:
-                continue
-            ordered = cast("list[Keyed]", order(members))  # type: ignore[operator]
-            kinds = self.kinds[root]
-            method = cast(Method, "mixed" if len(kinds) > 1 else next(iter(kinds)))
-            result.append(DuplicateGroup(ordered[0].id, tuple(r.id for r in ordered), method))
-        return sorted(result, key=lambda g: g.members)
+        return [members for members in by_root.values() if len(members) > 1]
+
+
+def star_groups(
+    components: Iterable[list[Keyed]],
+    edge: Callable[[Keyed, Keyed], str | None],
+    order: Callable[[list[Keyed]], list[Keyed]],
+) -> list[DuplicateGroup]:
+    """Split connected records into groups whose members all match their keeper *directly*.
+
+    Chains (A~B, B~C, but A !~ C) would otherwise pull different pictures into one group.
+    Each component is taken best-keeper first. The keeper gathers its direct matches, and the
+    rest are grouped again the same way.
+    """
+    result = []
+    for component in components:
+        remaining = order(component)
+        while remaining:
+            keeper, rest = remaining[0], remaining[1:]
+            kinds = {kind for other in rest if (kind := edge(keeper, other))}
+            members = [keeper, *(other for other in rest if edge(keeper, other))]
+            remaining = [other for other in rest if not edge(keeper, other)]
+            if len(members) > 1:
+                method = cast(Method, "mixed" if len(kinds) > 1 else next(iter(kinds)))
+                result.append(DuplicateGroup(keeper.id, tuple(m.id for m in members), method))
+    return sorted(result, key=lambda g: g.members)
 
 
 def same_value_pairs(records: Iterable[Keyed], attribute: str) -> Iterator[tuple[int, int]]:
