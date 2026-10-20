@@ -144,14 +144,14 @@ class IndexStage:
         details = action.details
         kind = cast(Kind, details["kind"])
         flags = {str(flag) for flag in cast(list[str], details["flags"])}
-        sha256 = phash = dhash = None
+        sha256 = phash = dhash = fine = None
         embedded = Embedded()
         if details["original"]:
             original = self.library / str(details["original"])
             sha256 = sha256_file(original)
             hashes = image_hashes(original) if kind == "photo" else None
             if hashes is not None:
-                phash, dhash = hashes.phash, hashes.dhash
+                phash, dhash, fine = hashes.phash, hashes.dhash, hashes.fine
             if self._exiftool is None:
                 self._exiftool = ExifTool()
             embedded = self._exiftool.read(original)
@@ -166,6 +166,7 @@ class IndexStage:
                 sha256=sha256,
                 phash=phash,
                 dhash=dhash,
+                phash_fine=fine,
                 width=cast(int | None, details["width"]) or embedded.width,
                 height=cast(int | None, details["height"]) or embedded.height,
                 duration=embedded.duration,

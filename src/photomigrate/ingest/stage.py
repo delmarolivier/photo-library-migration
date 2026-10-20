@@ -21,6 +21,7 @@ from types import TracebackType
 from typing import Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
+from photomigrate.hashing import image_hashes
 from photomigrate.ingest.exif import ExifTool, can_write
 from photomigrate.ingest.names import Kind, media_kind, parse_media_name
 from photomigrate.ingest.policy import date_candidates, decide
@@ -176,6 +177,7 @@ class IngestStage:
         scratch.mkdir(parents=True, exist_ok=True)
         with self.takeout.local_copy(entry, scratch) as (copy, sha256):
             embedded = self.exiftool.read(copy)
+            hashes = image_hashes(copy) if details["kind"] == "photo" else None
         raw = details.get("sidecar_data")
         sidecar = SidecarData.from_dict(raw) if isinstance(raw, dict) else None
         album = details.get("album")
@@ -216,6 +218,9 @@ class IngestStage:
             original_path=str(details["locator"]),
             sidecar_path=None if details["sidecar"] is None else str(details["sidecar"]),
             sha256=sha256,
+            phash=hashes.phash if hashes else None,
+            dhash=hashes.dhash if hashes else None,
+            phash_fine=hashes.fine if hashes else None,
             width=embedded.width,
             height=embedded.height,
             duration=embedded.duration,

@@ -180,12 +180,18 @@ ALTER TABLE items ADD COLUMN scores TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE items ADD COLUMN timezone TEXT;
 """
 
+SCHEMA_V6 = """
+-- A 256-bit pHash, to tell copies from crops when the 64-bit hashes look alike.
+ALTER TABLE items ADD COLUMN phash_fine TEXT;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
     Migration(3, "albums, copies and keywords", SCHEMA_V3),
     Migration(4, "content identifiers", SCHEMA_V4),
     Migration(5, "scores and time zones", SCHEMA_V5),
+    Migration(6, "fine perceptual hashes", SCHEMA_V6),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair"]
@@ -241,6 +247,7 @@ class CatalogueItem:
     sha256: str | None = None
     phash: str | None = None
     dhash: str | None = None
+    phash_fine: str | None = None
     width: int | None = None
     height: int | None = None
     duration: float | None = None

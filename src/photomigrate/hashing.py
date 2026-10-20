@@ -1,6 +1,6 @@
 """Content hashes: SHA-256 for byte-identical copies, perceptual hashes for near-duplicates.
 
-Perceptual hashes (pHash and dHash, 64 bits each, as hex) are computed on the upright image
+Perceptual hashes are computed on the upright image
 (EXIF orientation applied), so a rotated copy still matches. Big JPEGs are decoded at reduced
 size first, which is much faster and gives the same hash.
 """
@@ -23,16 +23,20 @@ _DECODE_SIZE = (512, 512)
 
 @dataclass(frozen=True)
 class ImageHashes:
+    """``phash`` and ``dhash``: 64 bits each, fast to compare (finding candidates). ``fine``: a
+    256-bit pHash that tells copies (distance ≤ 8 in tests) from crops (≥ 18)."""
+
     phash: str
     dhash: str
+    fine: str
 
     def __str__(self) -> str:
-        return f"{self.phash}:{self.dhash}"
+        return f"{self.phash}:{self.dhash}:{self.fine}"
 
     @classmethod
     def parse(cls, text: str) -> ImageHashes:
-        phash, dhash = text.split(":")
-        return cls(phash, dhash)
+        phash, dhash, fine = text.split(":")
+        return cls(phash, dhash, fine)
 
 
 def sha256_file(path: Path) -> str:
@@ -55,7 +59,11 @@ def image_hashes(path: Path) -> ImageHashes | None:
                 rgb = upright.convert("RGB")
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
         return None
-    return ImageHashes(str(imagehash.phash(rgb)), str(imagehash.dhash(rgb)))
+    return ImageHashes(
+        str(imagehash.phash(rgb)),
+        str(imagehash.dhash(rgb)),
+        str(imagehash.phash(rgb, hash_size=16)),
+    )
 
 
 def hamming(a: str, b: str) -> int:
