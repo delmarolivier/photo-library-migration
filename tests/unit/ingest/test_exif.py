@@ -5,8 +5,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from photomigrate.ingest.exif import Embedded, ExifTool, MetadataError, MetadataWrite, can_write
 
+from photomigrate.ingest.exif import (
+    Embedded,
+    ExifTool,
+    MetadataError,
+    MetadataWrite,
+    can_write,
+    embedded_from_tags,
+    parse_exif_time,
+)
 from photomigrate.safety import ForbiddenPathError, GuardRules, PathGuard
 from photomigrate.testing.media import (
     encode_gif,
@@ -151,6 +159,10 @@ def test_an_empty_plan_or_a_naive_time_is_rejected(exiftool: ExifTool, tmp_path:
         exiftool.write(source, tmp_path / "x.jpg", MetadataWrite())
     with pytest.raises(ValueError, match="timezone"):
         MetadataWrite(taken=datetime(2019, 7, 1, 12, 0))
+    with pytest.raises(ValueError, match="together"):
+        MetadataWrite(latitude=1.0)
+    with pytest.raises(ValueError, match="altitude"):
+        MetadataWrite(altitude=3.0)
 
 
 def test_unwritable_formats_are_refused(exiftool: ExifTool, tmp_path: Path) -> None:
@@ -191,3 +203,66 @@ def test_paths_sent_to_exiftool_over_stdin_are_still_guarded(
             exiftool.read(photo)
     finally:
         guard.deactivate()
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("2019:07:01 12:34:56", datetime(2019, 7, 1, 12, 34, 56)),
+        ("2019:07:01 12:34:56+02:00", TAKEN),
+        ("2019:07:01 10:34:56Z", TAKEN),
+        ("2019:07:01 12:34:56.250+02:00", TAKEN.replace(microsecond=250000)),
+        ("0000:00:00 00:00:00", None),
+        ("2019:13:45 25:00:00", None),
+        ("yesterday", None),
+        (None, None),
+    ],
+)
+def test_parse_exif_time(text: object, expected: datetime | None) -> None:
+    assert parse_exif_time(text) == expected
+
+
+def test_tags_that_are_not_numbers_are_ignored() -> None:
+    read = embedded_from_tags({"Composite:GPSLatitude": "n/a", "QuickTime:Duration": "1.5 s"})
+
+    assert read.latitude is None
+    assert read.duration is None
+
+
+@pytest.mark.parametrize("name", ["a.jpg", "a.gif", "a.mov"])
+@pytest.mark.parametrize(
+    "plan",
+    [
+        MetadataWrite(taken=TAKEN),
+        MetadataWrite(latitude=48.8584, longitude=2.2945),
+        MetadataWrite(latitude=-0.5, longitude=-60.25, altitude=-3.0),
+        MetadataWrite(description="Tour Eiffel"),
+    ],
+    ids=["date", "gps", "altitude", "caption"],
+)
+def test_each_field_can_be_written_on_its_own(
+    exiftool: ExifTool, tmp_path: Path, name: str, plan: MetadataWrite
+) -> None:
+    dest = tmp_path / f"out-{name}"
+
+    exiftool.write(make(tmp_path, name), dest, plan)
+    read = exiftool.read(dest)
+
+    assert read.taken == plan.taken
+    if plan.latitude is not None:
+        assert read.latitude == pytest.approx(plan.latitude, abs=1e-6)
+    if plan.description is not None:
+        assert read.description == plan.description
+
+
+def test_reading_a_missing_file_is_reported(exiftool: ExifTool, tmp_path: Path) -> None:
+    with pytest.raises(MetadataError, match="could not read"):
+        exiftool.read(tmp_path / "missing.jpg")
+
+
+def test_closing_twice_is_harmless() -> None:
+    tool = ExifTool()
+    tool.close()
+    with tool:
+        pass
+    tool.close()
