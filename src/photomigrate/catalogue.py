@@ -258,6 +258,18 @@ CREATE TABLE inferred_locations (
 );
 """
 
+SCHEMA_V14 = """
+-- Imports into iCloud Photos: each Google item's Photos uuid (a Live Photo's still and clip
+-- share one), the SHA-256 of the working copy that was imported, and its batch.
+CREATE TABLE imports (
+    item_id        INTEGER PRIMARY KEY REFERENCES items (id),
+    photos_uuid    TEXT NOT NULL,
+    working_sha256 TEXT NOT NULL,
+    batch          TEXT NOT NULL,
+    imported_at    TEXT NOT NULL
+);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -272,6 +284,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(11, "cameras", SCHEMA_V11),
     Migration(12, "clutter", SCHEMA_V12),
     Migration(13, "inferred locations", SCHEMA_V13),
+    Migration(14, "imports", SCHEMA_V14),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -621,6 +634,22 @@ class Catalogue:
                 row["method"],
                 json.loads(row["evidence"]),
             )
+            for row in rows
+        }
+
+    def record_import(self, item_id: int, uuid: str, working_sha256: str, batch: str) -> None:
+        """Record that the item is in iCloud Photos as ``uuid`` (recorded once)."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO imports (item_id, photos_uuid, working_sha256, batch, "
+            "imported_at) VALUES (?, ?, ?, ?, ?)",
+            (item_id, uuid, working_sha256, batch, self.now()),
+        )
+
+    def imports(self) -> dict[int, tuple[str, str, str]]:
+        """item id -> (Photos uuid, working copy SHA-256, batch), for every imported item."""
+        rows = self._conn.execute("SELECT * FROM imports ORDER BY item_id")
+        return {
+            int(row["item_id"]): (row["photos_uuid"], row["working_sha256"], row["batch"])
             for row in rows
         }
 

@@ -127,3 +127,11 @@ def test_switches_are_true_or_false(tmp_path: Path) -> None:
     assert load_config(write(tmp_path, "[location]\nany_device = true\n")).location.any_device
     with pytest.raises(ConfigError, match=re.escape("'location.any_device' must be true or false")):
         load_config(write(tmp_path, "[location]\nany_device = 1\n"))
+
+
+def test_import_batches_have_a_size(tmp_path: Path) -> None:
+    assert Config().importer.batch_gigabytes == 20.0
+    assert (
+        load_config(write(tmp_path, "[import]\nbatch_gigabytes = 5\n")).importer.batch_gigabytes
+        == 5.0
+    )

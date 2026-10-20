@@ -72,3 +72,9 @@ window_minutes = 30.0
 timeline_tolerance_minutes = 15.0
 # Also borrow from other cameras' shots (two phones at one event), not just the same device's.
 any_device = false
+
+# Import (photomigrate import --apply). Originals are streamed out of the zips, prepared as
+# working copies and imported batch by batch; one batch's copies must fit on the disk.
+
+[import]
+batch_gigabytes = 20.0

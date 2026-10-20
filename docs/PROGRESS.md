@@ -2,10 +2,13 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M3-06] CLA-88 (review gallery). Milestone 3 is complete.
-- Next issue: [M4-01] CLA-89 (importer).
+- Last completed issue: [M4-01] CLA-89 (importer).
+- Next issue: [M4-02] CLA-90 ("To Delete" staging, no-delete guarantee).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
+  - Needs you: run the real Photos.app import test once on the Air. Create an empty library
+    under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
+    `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos`.
   - Location backfill: borrow GPS across devices (`[location] any_device = true`)? On the
     sample, the iPhone 4S shots have no GPS and the iPhone 5 shots do; across devices, 56
     would get a proposal at 30 minutes. The default stays "same device", as the issue says.
@@ -20,6 +23,18 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M4-01
+- `importer.outcomes`: every Google item is import, duplicate-of-existing, rejected-by-user,
+  follows (Live clip) or pending (an unanswered question); `to_delete` lists the rejected
+  iCloud items.
+- `importer.library`: `PhotosLibrary` protocol; `PhotoscriptLibrary` refuses unless Photos
+  has the given library open. `testing.photos.DisposableLibrary` for tests.
+- `importer.stage` + `photomigrate import` and `confirm-backup`: batches of working copies
+  (exiftool `-o`) into "From Google", with albums, favourites, captions and keywords; dates
+  and places for existing iCloud items; catalogue v14 `imports`. Config `[import]
+  batch_gigabytes`; the config file can now name a section differently from its field.
+- Tests: 1,109, 100%. The real Photos.app test is opt-in (see the open questions).
+
 ### 2026-10-20: session 1 (continued): M3-06
 - `photomigrate review` (FastAPI, Jinja2, htmx 2.0.4 vendored and checked against its
   published SHA-384): eight queues; decisions are checked, then saved at once; bulk answers

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
@@ -24,6 +24,8 @@ from photomigrate.analyse.quality import QualityStage
 from photomigrate.config import Config, ConfigError, load_config
 from photomigrate.embedding import default_embedder
 from photomigrate.faces import face_reader
+from photomigrate.importer.library import LibraryMismatchError, PhotosLibrary
+from photomigrate.importer.stage import ImportStage
 from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
@@ -256,6 +258,88 @@ def analyse(
 
 
 DEFAULT_THUMBS = Path("data/thumbs")
+DEFAULT_BACKUP_MARKER = Path("data/BACKUP-CONFIRMED")
+
+
+def photos_library(path: Path) -> PhotosLibrary:
+    """The real library, through Photos.app (macOS). Refuses unless Photos has it open."""
+    from photomigrate.importer.library import PhotoscriptLibrary
+
+    return PhotoscriptLibrary(path)
+
+
+BackupMarker = Annotated[
+    Path, typer.Option("--backup-marker", help="The file that says the backup was checked.")
+]
+
+
+@app.command("confirm-backup")
+def confirm_backup(backup_marker: BackupMarker = DEFAULT_BACKUP_MARKER) -> None:
+    """Say that the Photos library is backed up, which `import --apply` needs."""
+    if not typer.confirm(
+        "Has a Time Machine backup of the Photos library finished since your last change, "
+        "with every original downloaded?"
+    ):
+        typer.echo("Not marked. Check the backup first.", err=True)
+        raise typer.Exit(code=1)
+    backup_marker.parent.mkdir(parents=True, exist_ok=True)
+    backup_marker.write_text(f"Backup confirmed {datetime.now(UTC).isoformat()}\n", "utf-8")
+    typer.echo(f"Backup confirmed: {backup_marker}")
+
+
+@app.command("import")
+def import_(
+    ctx: typer.Context,
+    takeout: Annotated[
+        Path, typer.Option(file_okay=False, help="The Takeout folder (zips are only read).")
+    ],
+    library: Annotated[
+        Path | None,
+        typer.Option(help="The .photoslibrary Photos has open; needed with --apply."),
+    ] = None,
+    work_dir: Annotated[
+        Path, typer.Option("--work-dir", help="Scratch space for one batch's working copies.")
+    ] = DEFAULT_WORK_DIR,
+    timezone: Annotated[
+        str | None,
+        typer.Option("--timezone", help="IANA zone of local times (default: this Mac's)."),
+    ] = None,
+    backup_marker: BackupMarker = DEFAULT_BACKUP_MARKER,
+    apply: Annotated[bool, typer.Option("--apply", help="Import (else a dry run).")] = False,
+) -> None:
+    """Import approved Google items into the album "From Google" with their albums,
+    favourites, captions and keywords, and apply answered dates and places to existing
+    iCloud items. A dry run unless --apply; --apply needs a confirmed backup and a yes."""
+    settings: Settings = ctx.obj
+    zone = _zone(timezone)
+    console = Console()
+    if apply and library is None:
+        raise typer.BadParameter("--apply needs the library", param_hint="--library")
+    common = {"catalogue_path": settings.catalogue, "plan_dir": settings.plan_dir}
+    with ImportStage(None, takeout, work_dir, zone=zone, config=settings.config.importer) as plan:
+        dry = run_stage(plan, **common, apply=False)  # type: ignore[arg-type]
+    render_result(dry, console)
+    if not apply:
+        return
+    if not backup_marker.is_file():
+        typer.echo(
+            f"Error: no confirmed backup ({backup_marker}). Check the Time Machine backup of "
+            "the Photos library, then run: photomigrate confirm-backup",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if not typer.confirm(f"Import into {library} (Photos must have it open)?"):
+        typer.echo("Nothing imported.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        photos = photos_library(cast(Path, library))
+        with ImportStage(
+            photos, takeout, work_dir, zone=zone, config=settings.config.importer
+        ) as stage:
+            render_result(run_stage(stage, **common, apply=True), console)  # type: ignore[arg-type]
+    except (LibraryMismatchError, StageFailedError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()
@@ -295,7 +379,6 @@ def warn_missing_originals(missing: list[Action], console: Console, limit: int =
 
 
 _STAGES = {
-    "import": "Import approved items into Photos (dry-run unless --apply).",
     "report": "Reconciliation report: every Google item accounted for.",
 }
 

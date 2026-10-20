@@ -4,8 +4,8 @@ Merge Google Photos into iCloud Photos as one library: dedupe photos and videos,
 low-quality shots, review every decision in a local gallery, then import. **The tool never
 deletes anything**: removals go into a "To Delete" album that you clear by hand.
 
-Status: milestone 3. `ingest`, `index`, `analyse` and `review` work; `import` and `report`
-are stubs.
+Status: milestone 4. `ingest`, `index`, `analyse`, `review` and `import` work; `report` is a
+stub.
 Plan and task queue: Linear project "Photo Library Migration" (P-CLA-3, ClawWorks).
 
 ## Requirements
@@ -52,6 +52,14 @@ uv run photomigrate review --takeout /Volumes/Photos/takeout \
     --library "/Volumes/Photos/Photos Library.photoslibrary"
 ```
 
+```sh
+# Import approved items (dry run first; --apply needs a confirmed backup and a yes)
+uv run photomigrate import --takeout /Volumes/Photos/takeout
+uv run photomigrate confirm-backup
+uv run photomigrate import --takeout /Volumes/Photos/takeout \
+    --library "/Volumes/Photos/Photos Library.photoslibrary" --apply
+```
+
 Global options: `--catalogue PATH` (default `data/catalogue.sqlite`), `--plan-dir PATH`
 (default `data/plans`) and `--config FILE`. The config file is TOML and only needs the
 settings it changes; [`photomigrate.example.toml`](photomigrate.example.toml) lists them all
@@ -63,7 +71,7 @@ with their defaults. Unknown settings are errors.
 | `index` | Read-only index of the iCloud library: hashes, quality, embeddings, faces, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
 | `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); date audit: missing, placeholder, future, conflicting and out-of-sequence dates batched by camera, folder and name, with suggestions, and the review's answers applied (accept, a date, a year, a shift); clutter queue: screenshots, receipts and documents, memes, messaging forwards and Google creations, each with a score and its evidence; location backfill proposals from the same camera's shots nearby in time or a Google Maps Timeline export (`--timeline`), written only once approved |
 | `review` | Local gallery on 127.0.0.1 with one queue per question (duplicates, best shot, edited versions, dates, clutter, quality, locations, unmatched); thumbnails from the zips and the library; keyboard shortcuts; every answer saved at once, nothing else changed |
-| `import` | Dry-run by default; `--apply` imports approved items and stages removals |
+| `import` | Dry run by default; `--apply` imports approved Google items in batches into "From Google" (albums, favourites, captions, keywords, Live Photos as pairs) and applies answered dates and approved places to existing iCloud items; resumable, never imports an item twice |
 | `report` | Reconciliation report: every Google item accounted for |
 
 Every stage that writes is a **dry run by default**. It prints the plan as a table and saves it
