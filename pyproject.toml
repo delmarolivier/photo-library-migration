@@ -88,7 +88,12 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["exiftool", "exiftool.*", "imagehash", "imagehash.*", "open_clip", "open_clip.*", "osxphotos", "osxphotos.*", "scipy", "scipy.*"]
+module = [
+    "exiftool", "exiftool.*", "imagehash", "imagehash.*", "open_clip", "open_clip.*", "osxphotos",
+    "osxphotos.*", "scipy", "scipy.*",
+    # pyobjc (macOS)
+    "Foundation", "Quartz", "Vision",
+]
 ignore_missing_imports = true
 
 # open_clip needs torch. Linux (CI) takes the CPU-only wheels; the default ones pull in CUDA.
