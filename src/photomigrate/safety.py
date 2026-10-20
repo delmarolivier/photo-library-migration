@@ -95,11 +95,10 @@ class GuardRules:
         if os.path.isabs(text):
             return any(self._form_is_forbidden(form) for form in _forms(text))
         # A relative name may be relative to a directory fd (shutil.rmtree, os.fwalk) rather
-        # than the cwd, and that fd was checked when it was opened. So judge the cwd itself,
-        # plus the always-forbidden roots.
-        return self.is_forbidden(os.getcwd()) or any(
-            self._under_forbidden_root(form) for form in _forms(text)
-        )
+        # than the cwd, and that fd was checked when it was opened. Joining it to the cwd gives
+        # false hits (a tmp "data-in" read as <repo>/data-in), so only the cwd itself is judged.
+        # Gap: cwd-relative access into a protected root from its parent. Use absolute paths.
+        return self.is_forbidden(os.getcwd())
 
     def _under_forbidden_root(self, path: str) -> bool:
         return any(_within(path, root) for root in self._forbidden)

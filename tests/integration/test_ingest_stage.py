@@ -1,0 +1,210 @@
+"""The ingest stage end to end on the standard synthetic Takeout (CLA-76)."""
+
+import hashlib
+import json
+import zipfile
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from photomigrate.catalogue import Catalogue, CatalogueItem
+from photomigrate.ingest.stage import IngestStage
+from photomigrate.runner import RunResult, run_stage
+from photomigrate.testing.takeout import TakeoutBuilder, TakeoutManifest, standard_takeout
+
+ZONE = ZoneInfo("Europe/Paris")
+
+
+def zip_hashes(manifest: TakeoutManifest) -> dict[str, str]:
+    return {z.name: hashlib.sha256(z.read_bytes()).hexdigest() for z in manifest.zips}
+
+
+def member_sha(manifest: TakeoutManifest, path: str) -> str:
+    archive = manifest.zips[manifest.parts[path] - 1]
+    with zipfile.ZipFile(archive) as bundle:
+        return hashlib.sha256(bundle.read(path)).hexdigest()
+
+
+def ingest(takeout: Path, tmp: Path, *, apply: bool) -> RunResult:
+    with IngestStage(takeout, tmp / "work", zone=ZONE) as stage:
+        return run_stage(
+            stage, catalogue_path=tmp / "catalogue.sqlite", plan_dir=tmp / "plans", apply=apply
+        )
+
+
+@pytest.fixture(scope="module")
+def applied(
+    standard_takeout_zips: TakeoutManifest, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[tuple[TakeoutManifest, Path, RunResult, dict[str, str]]]:
+    tmp = tmp_path_factory.mktemp("ingest")
+    before = zip_hashes(standard_takeout_zips)
+    result = ingest(standard_takeout_zips.zips[0].parent, tmp, apply=True)
+    return standard_takeout_zips, tmp, result, before
+
+
+def items(tmp: Path) -> dict[str, CatalogueItem]:
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        return {item.source_key: item for item in catalogue.items("google")}
+
+
+def candidates(tmp: Path, key: str) -> dict[str, datetime]:
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        item = catalogue.get_item("google", key)
+        assert item is not None
+        assert item.id is not None
+        return catalogue.date_candidates(item.id)
+
+
+def test_every_item_is_catalogued_with_its_true_sidecar_or_flagged(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+    stored = items(tmp)
+
+    assert set(stored) == {item.path for item in manifest.items}
+    for item in manifest.items:
+        row = stored[item.path]
+        assert row.sidecar_path == manifest.metadata_sidecar(item), item.path
+        if row.sidecar_path is None:
+            assert "no-sidecar" in row.flags, item.path
+
+
+def test_originals_are_located_in_their_zip_part_and_hashed(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, before = applied
+
+    for key, row in items(tmp).items():
+        part = manifest.zips[manifest.parts[key] - 1].name
+        assert row.original_path == f"{part}::{key}"
+        assert row.working_path is None
+        assert row.sha256 == member_sha(manifest, key)
+    assert zip_hashes(manifest) == before, "the zips are never modified"
+
+
+def test_kinds_titles_captions_favourites_and_sizes(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+    stored = items(tmp)
+
+    beach = stored["Takeout/Google Photos/Photos from 2019/IMG_1001.JPG"]
+    assert (beach.kind, beach.title, beach.favorite) == ("photo", "IMG_1001.JPG", True)
+    assert beach.description == "Plage à Nice 🏖️"
+    assert (beach.width, beach.height) == (320, 240)
+    clip = stored["Takeout/Google Photos/Photos from 2019/VID_20190704_101010.mp4"]
+    assert clip.kind == "video"
+    assert clip.duration == pytest.approx(2.0, abs=0.1)
+    long_name = next(r for r in stored.values() if "truncated-name" in next(
+        i.quirks for i in manifest.items if i.path == r.source_key))  # fmt: skip
+    assert long_name.title is not None
+    assert len(long_name.title) > 47
+
+
+def test_date_candidates_come_from_every_source(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+
+    found = candidates(tmp, "Takeout/Google Photos/Photos from 2019/IMG_1001.JPG")
+    beach = next(i for i in manifest.items if i.name == "IMG_1001.JPG" and i.copy_of is None)
+    assert found["sidecar-taken"] == beach.taken
+    assert found["sidecar-created"] == beach.created
+    assert found["exif"] == beach.taken
+    assert found["mtime"] == datetime(2026, 10, 20, 8, 42, 20)
+    named = candidates(tmp, "Takeout/Google Photos/Photos from 2019/IMG_20120304_101112.jpg")
+    assert named["filename"] == datetime(2012, 3, 4, 10, 11, 12)
+    video = candidates(tmp, "Takeout/Google Photos/Photos from 2019/IMG_1010.MOV")
+    assert video["quicktime"] == next(i.taken for i in manifest.items if i.name == "IMG_1010.MOV")
+
+
+def plan_of(tmp: Path, key: str) -> dict[str, object]:
+    plan: dict[str, object] = json.loads(items(tmp)[key].metadata_plan)
+    return plan
+
+
+def test_metadata_plans_follow_the_rules(applied) -> None:  # type: ignore[no-untyped-def]
+    _manifest, tmp, _, _ = applied
+    root = "Takeout/Google Photos"
+    stored = items(tmp)
+
+    # The camera date wins; GPS already in EXIF; the caption is new.
+    beach = plan_of(tmp, f"{root}/Photos from 2019/IMG_1001.JPG")
+    assert beach["taken"] is None
+    assert beach["latitude"] is None
+    assert beach["description"] == "Plage à Nice 🏖️"
+    # No EXIF date (a stripped messaging forward): the sidecar date, in the home zone.
+    forward = f"{root}/Photos from 2019/IMG-20190702-WA0003.jpg"
+    assert plan_of(tmp, forward)["taken"] == "2019-07-02T08:00:00+02:00"
+    assert {"date-from-sidecar", "offset-assumed"} <= stored[forward].flags
+    # GPS only in the sidecar.
+    tower = plan_of(tmp, f"{root}/Photos from 2019/IMG_1003.HEIC")
+    assert tower["latitude"] == pytest.approx(35.6585805)
+    # Suspicious dates are never written.
+    for key, flag in (
+        (f"{root}/Photos from 1970/IMG_0001.JPG", "sidecar-date-placeholder"),
+        (f"{root}/Photos from 2019/IMG_20120304_101112.jpg", "sidecar-date-is-upload"),
+    ):
+        assert plan_of(tmp, key)["taken"] is None
+        assert {flag, "date-unknown"} <= stored[key].flags
+
+
+def test_flags_describe_matches_edits_and_google_creations(applied) -> None:  # type: ignore[no-untyped-def]
+    _, tmp, _, _ = applied
+    stored = items(tmp)
+    root = "Takeout/Google Photos/Photos from 2019"
+
+    assert "match-exact" in stored[f"{root}/IMG_1001.JPG"].flags
+    assert {"edited", "match-edited-original"} <= stored[f"{root}/IMG_1001-edited.JPG"].flags
+    assert "google-creation" in stored[f"{root}/IMG_1001-MOTION.gif"].flags
+    assert "google-creation" in stored[f"{root}/IMG_1003-SMILE-edited.jpg"].flags
+    assert "match-unmatched" in stored[f"{root}/IMG_1011.MOV"].flags
+
+
+def test_re_running_ingest_changes_nothing(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, first, _ = applied
+    catalogue_before = (tmp / "catalogue.sqlite").read_bytes()
+
+    again = ingest(manifest.zips[0].parent, tmp, apply=True)
+
+    assert first.applied == len(manifest.items)
+    assert again.applied == 0
+    assert (tmp / "catalogue.sqlite").read_bytes() == catalogue_before
+
+
+def test_a_dry_run_only_writes_the_plan(
+    standard_takeout_zips: TakeoutManifest, tmp_path: Path
+) -> None:
+    result = ingest(standard_takeout_zips.zips[0].parent, tmp_path, apply=False)
+
+    assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == [result.plan_path.name]  # type: ignore[union-attr]
+    assert result.plan.summary() == {"ingest": len(standard_takeout_zips.items)}
+
+
+def test_orphan_sidecars_and_unknown_files_are_flagged(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=5)
+    b.photo("Photos from 2019", "IMG_1.JPG", taken=datetime(2019, 7, 1, tzinfo=UTC))
+    b.other_product("Google Photos/Photos from 2019/IMG_404.JPG.supplemental-metadata.json", b"{}")
+    b.other_product("Google Photos/Photos from 2019/notes.txt", b"hello")
+    b.other_product("Google Photos/Photos from 2019/broken.jpg.supplemental-metadata.json", b"{")
+    b.photo("Photos from 2019", "broken.jpg", taken=datetime(2019, 7, 1, tzinfo=UTC), sidecar=None)
+    b.write_zips(tmp_path / "in")
+
+    result = ingest(tmp_path / "in", tmp_path, apply=True)
+
+    kinds = {(a.kind, a.target.rsplit("/", 1)[-1]) for a in result.plan.actions}
+    assert ("flag-orphan-sidecar", "IMG_404.JPG.supplemental-metadata.json") in kinds
+    assert ("flag-unknown-file", "notes.txt") in kinds
+    broken = items(tmp_path)["Takeout/Google Photos/Photos from 2019/broken.jpg"]
+    assert "bad-sidecar" in broken.flags
+    assert broken.sidecar_path is None
+
+
+def test_an_extracted_tree_is_ingested_in_place(tmp_path: Path) -> None:
+    standard_takeout(seed=0).write_tree(tmp_path / "tree")
+
+    ingest(tmp_path / "tree", tmp_path, apply=True)
+
+    row = items(tmp_path)["Takeout/Google Photos/Photos from 2019/IMG_1001.JPG"]
+    assert row.original_path == "Takeout/Google Photos/Photos from 2019/IMG_1001.JPG"
+    assert "match-exact" in row.flags
+
+
+def test_a_stage_that_was_never_used_closes_cleanly(tmp_path: Path) -> None:
+    with IngestStage(tmp_path / "nowhere", tmp_path / "work", zone=ZONE):
+        pass

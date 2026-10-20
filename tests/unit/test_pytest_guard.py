@@ -150,3 +150,18 @@ def test_access_outside_any_test_still_fails_the_session(pytester: pytest.Pytest
     result.assert_outcomes(passed=1)
     assert result.ret == pytest.ExitCode.TESTS_FAILED
     result.stdout.fnmatch_lines(["*photomigrate safety guard*", "*blocked open*probe.jpg*"])
+
+
+def test_the_real_samples_folder_is_off_limits(pytester: pytest.Pytester) -> None:
+    samples = pytester.path / "data-in"
+    samples.mkdir()
+    (samples / "Timeline.json").write_text("[]")
+    test_file = pytester.makepyfile(
+        """
+        def test_peek(pytestconfig):
+            (pytestconfig.rootpath / "data-in" / "Timeline.json").open("rb")
+        """
+    )
+
+    # Name the file: collecting the whole rootdir would already trip the guard on data-in/.
+    pytester.runpytest(*PLUGIN, str(test_file)).assert_outcomes(failed=1)

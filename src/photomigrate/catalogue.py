@@ -127,7 +127,16 @@ CREATE TABLE actions (
 CREATE INDEX actions_key_status ON actions (key, status);
 """
 
-MIGRATIONS: tuple[Migration, ...] = (Migration(1, "initial schema", SCHEMA_V1),)
+SCHEMA_V2 = """
+-- What ingest decided to write into the item's working copy at import (JSON, see
+-- photomigrate.ingest.exif.MetadataWrite).
+ALTER TABLE items ADD COLUMN metadata_plan TEXT NOT NULL DEFAULT '{}';
+"""
+
+MIGRATIONS: tuple[Migration, ...] = (
+    Migration(1, "initial schema", SCHEMA_V1),
+    Migration(2, "metadata plans", SCHEMA_V2),
+)
 
 
 def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] = MIGRATIONS) -> int:
@@ -172,6 +181,7 @@ class CatalogueItem:
     description: str | None = None
     favorite: bool = False
     flags: frozenset[str] = field(default_factory=frozenset)
+    metadata_plan: str = "{}"
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
