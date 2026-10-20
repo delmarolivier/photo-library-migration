@@ -174,11 +174,18 @@ ALTER TABLE items ADD COLUMN content_id TEXT;
 CREATE INDEX items_content_id ON items (content_id);
 """
 
+SCHEMA_V5 = """
+-- Apple's aesthetic scores (JSON, from osxphotos) and the IANA time zone of the capture.
+ALTER TABLE items ADD COLUMN scores TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE items ADD COLUMN timezone TEXT;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
     Migration(3, "albums, copies and keywords", SCHEMA_V3),
     Migration(4, "content identifiers", SCHEMA_V4),
+    Migration(5, "scores and time zones", SCHEMA_V5),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair"]
@@ -247,6 +254,8 @@ class CatalogueItem:
     metadata_plan: str = "{}"
     google_url: str | None = None
     content_id: str | None = None
+    scores: str = "{}"
+    timezone: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:

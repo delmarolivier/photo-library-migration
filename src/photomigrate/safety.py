@@ -28,6 +28,8 @@ PathArg = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 ANNOUNCE_EVENT = "photomigrate.path"
 """Audit event for paths handed to an external tool over a pipe (see ``announce_path``)."""
+WRITE_EVENT = "photomigrate.write"
+"""Like ``ANNOUNCE_EVENT``, for a path an external tool is about to write (``announce_write``)."""
 
 _MEDIA_STORE_PATTERNS = ("*.photoslibrary", "takeout", "takeout-*.zip", "takeout-*.tgz")
 
@@ -143,7 +145,7 @@ def _command_tokens(command: object) -> Iterator[str]:
             yield part.split("=", 1)[1]
 
 
-_FS_EVENTS = frozenset({"open", "sqlite3.connect", ANNOUNCE_EVENT})
+_FS_EVENTS = frozenset({"open", "sqlite3.connect", ANNOUNCE_EVENT, WRITE_EVENT})
 _FS_EVENT_PREFIXES = ("os.", "shutil.", "glob.", "pathlib.", "tempfile.")
 _NON_FS_OS_EVENTS = frozenset({"os.putenv", "os.unsetenv"})
 
@@ -200,6 +202,8 @@ _hook_installed = False
 def _audit(event: str, args: tuple[Any, ...]) -> None:
     if _active_guards:
         _active_guards[-1].check(event, args)
+    for guard in list(_read_only_guards):
+        guard.check(event, args)
 
 
 def _install_audit_hook() -> None:
@@ -208,6 +212,88 @@ def _install_audit_hook() -> None:
     if not _hook_installed:
         sys.addaudithook(_audit)
         _hook_installed = True
+
+
+def announce_write(path: PathArg) -> None:
+    """Declare a path that an external tool is about to *write* (see ``announce_path``)."""
+    sys.audit(WRITE_EVENT, os.fsdecode(path))
+
+
+# --- Read-only guard (CLAUDE.md rule 6) -----------------------------------------------------
+
+_WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
+_MUTATING_EVENTS = frozenset(
+    {"os.rename", "os.remove", "os.rmdir", "os.mkdir", "os.utime", "os.chmod", "os.chown",
+     "os.chflags", "os.lchflags", "os.truncate", "os.link", "os.symlink", "os.setxattr",
+     "os.removexattr", "shutil.rmtree", "shutil.move", "shutil.chown", WRITE_EVENT}
+)  # fmt: skip
+_COPY_EVENTS = frozenset(
+    {"shutil.copyfile", "shutil.copymode", "shutil.copystat", "shutil.copytree"}
+)
+
+
+def _sqlite_writes(database: object) -> list[str]:
+    if not _is_pathlike(database):
+        return []
+    text = os.fsdecode(database)  # type: ignore[arg-type]
+    if text == ":memory:":
+        return []
+    if text.startswith("file:"):
+        parts = urllib.parse.urlsplit(text)
+        if urllib.parse.parse_qs(parts.query).get("mode") == ["ro"]:
+            return []
+        return [urllib.parse.unquote(parts.path)]
+    return [text]
+
+
+def _written_paths(event: str, args: tuple[Any, ...]) -> list[str]:
+    if event == "open":
+        path, mode, flags = args
+        writing = (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
+            isinstance(flags, int) and bool(flags & _WRITE_FLAGS)
+        )
+        return list(_path_args((path,))) if writing else []
+    if event == "sqlite3.connect":
+        return _sqlite_writes(args[0])
+    if event in _COPY_EVENTS or event == "os.symlink":  # only the destination changes
+        return list(_path_args(args[1:2]))
+    if event in _MUTATING_EVENTS:
+        return list(_path_args(args))
+    return []
+
+
+class ReadOnlyGuard:
+    """While active, refuses any write inside ``root``. Reads pass. Use as a context manager."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.violations: list[Violation] = []
+        self._roots = _root_forms([root])
+
+    def _inside(self, path: str) -> bool:
+        if not os.path.isabs(path):
+            path = os.getcwd()
+        return any(_within(form, root) for form in _forms(path) for root in self._roots)
+
+    def check(self, event: str, args: tuple[Any, ...]) -> None:
+        for path in _written_paths(event, args):
+            if self._inside(path):
+                self.violations.append(Violation(event=event, path=path))
+                raise ForbiddenPathError(
+                    f"photomigrate read-only guard blocked {event} on {path!r}: "
+                    f"{self.root} is read-only (CLAUDE.md rule 6)"
+                )
+
+    def __enter__(self) -> ReadOnlyGuard:
+        _install_audit_hook()
+        _read_only_guards.append(self)
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        _read_only_guards.remove(self)
+
+
+_read_only_guards: list[ReadOnlyGuard] = []
 
 
 def announce_path(path: PathArg) -> None:
