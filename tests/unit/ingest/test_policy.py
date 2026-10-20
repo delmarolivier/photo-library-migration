@@ -4,10 +4,10 @@ from datetime import UTC, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
-from photomigrate.ingest.policy import date_candidates, decide, local_zone
 
 from photomigrate.ingest import policy
 from photomigrate.ingest.exif import Embedded
+from photomigrate.ingest.policy import date_candidates, decide, local_zone
 from photomigrate.ingest.sidecars import SidecarData
 
 PARIS_SUMMER = timezone(timedelta(hours=2))
@@ -184,3 +184,25 @@ def test_local_zone_falls_back_to_utc(monkeypatch: pytest.MonkeyPatch, target: s
     monkeypatch.setattr(policy, "_localtime_target", lambda: target)
 
     assert local_zone() == ZoneInfo("UTC")
+
+
+def test_a_sidecar_without_an_upload_time_still_counts() -> None:
+    found = date_candidates(
+        kind="photo",
+        embedded=Embedded(),
+        sidecar=sidecar(created=None),
+        name="IMG_1001.JPG",
+        modified=datetime(2026, 10, 20, 8, 42, 20),
+    )
+
+    assert "sidecar-created" not in found
+    assert found["sidecar-taken"] == TAKEN_UTC
+
+
+def test_the_localtime_link_is_read_safely(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(_path: str) -> str:
+        raise OSError("no link")
+
+    assert policy._localtime_target() is None or "zoneinfo" in str(policy._localtime_target())
+    monkeypatch.setattr(policy.os, "readlink", broken)
+    assert policy._localtime_target() is None
