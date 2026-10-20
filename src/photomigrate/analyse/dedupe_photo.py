@@ -45,6 +45,9 @@ __all__ = ["DedupeConfig", "DedupeStage", "DuplicateGroup", "PhotoRecord", "find
 class DedupeConfig:
     candidate_phash: int = 8
     fine_max: int = 12
+    fine_max_untimed: int = 6
+    """When either photo lacks a capture time, the time check cannot help: on the real sample
+    true duplicates were then within 2 bits, and a different shot was 10."""
     dhash_max: int = 10
     aspect_tolerance: float = 0.02
     same_moment: timedelta = field(default=timedelta(0))
@@ -97,7 +100,8 @@ def _aspect(record: PhotoRecord) -> float | None:
 
 
 def _verified(a: PhotoRecord, b: PhotoRecord, config: DedupeConfig) -> bool:
-    if a.fine and b.fine and hamming(a.fine, b.fine) > config.fine_max:
+    limit = config.fine_max if a.taken and b.taken else config.fine_max_untimed
+    if a.fine and b.fine and hamming(a.fine, b.fine) > limit:
         return False
     if a.dhash and b.dhash and hamming(a.dhash, b.dhash) > config.dhash_max:
         return False
