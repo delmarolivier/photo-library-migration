@@ -262,6 +262,7 @@ class IngestStage:
             metadata_plan=json.dumps(plan.to_dict(), sort_keys=True, ensure_ascii=False),
             google_url=url,
             content_id=embedded.content_id,
+            camera=embedded.camera,
             quality=as_json(photo.metrics or video),
             embedding=photo.embedding,
             faces=photo.faces,

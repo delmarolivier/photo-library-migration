@@ -202,6 +202,7 @@ class IndexStage:
                 favorite=bool(details["favorite"]),
                 flags=frozenset(flags),
                 content_id=embedded.content_id,
+                camera=embedded.camera,
                 scores=json.dumps(details["scores"], sort_keys=True),
                 timezone=cast(str | None, details["timezone"]),
                 quality=as_json(photo.metrics or video),

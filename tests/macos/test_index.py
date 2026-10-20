@@ -204,3 +204,10 @@ def test_the_cli_embeds_photos_and_reads_their_faces(test_library: Path, tmp_pat
     assert result.exit_code == 0, result.output
     photos = [i for i in icloud_items(tmp_path).values() if i.kind == "photo" and i.sha256]
     assert all(i.embedding is not None and i.faces is not None for i in photos)
+
+
+def test_the_camera_is_recorded(test_library: Path, tmp_path: Path) -> None:
+    index(test_library, tmp_path)
+
+    cameras = {i.camera for i in icloud_items(tmp_path).values() if i.sha256}
+    assert any(camera and camera.startswith("Apple iPhone") for camera in cameras)

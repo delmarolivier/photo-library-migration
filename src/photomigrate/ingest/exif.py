@@ -30,7 +30,7 @@ _READ_TAGS = [
     "DateTimeOriginal", "OffsetTimeOriginal", "CreateDate", "CreationDate",
     "GPSLatitude#", "GPSLongitude#", "GPSAltitude#",
     "Description", "ImageDescription", "Caption-Abstract",
-    "ImageSize#", "Duration#", "ContentIdentifier",
+    "ImageSize#", "Duration#", "ContentIdentifier", "Make", "Model",
 ]  # fmt: skip
 _EXIF_TIME = re.compile(
     r"^(?P<date>\d{4}:\d\d:\d\d) (?P<time>\d\d:\d\d:\d\d)"
@@ -64,6 +64,8 @@ class Embedded:
     duration: float | None = None
     content_id: str | None = None
     """Apple's Live Photo identifier, shared by a still and its motion clip."""
+    camera: str | None = None
+    """Make and model, like ``Apple iPhone 8`` (the make once, if the model repeats it)."""
 
 
 @dataclass(frozen=True)
@@ -195,6 +197,17 @@ def _number(value: Any) -> float | None:
         return None
 
 
+def _camera(found: dict[str, Any]) -> str | None:
+    make = str(_first(found, "IFD0:Make", "Keys:Make", "QuickTime:Make", "XMP-tiff:Make") or "")
+    model = str(
+        _first(found, "IFD0:Model", "Keys:Model", "QuickTime:Model", "XMP-tiff:Model") or ""
+    )
+    make, model = make.strip(), model.strip()
+    if make and model.lower().startswith(make.lower()):
+        return model
+    return " ".join(part for part in (make, model) if part) or None
+
+
 def embedded_from_tags(found: dict[str, Any]) -> Embedded:
     """Turn exiftool's ``-G1`` tag dict into an ``Embedded``."""
     exif_time = parse_exif_time(found.get("ExifIFD:DateTimeOriginal"))
@@ -229,6 +242,7 @@ def embedded_from_tags(found: dict[str, Any]) -> Embedded:
         height=height,
         duration=_number(found.get("QuickTime:Duration")),
         content_id=_first(found, "Apple:ContentIdentifier", "Keys:ContentIdentifier"),
+        camera=_camera(found),
     )
 
 
