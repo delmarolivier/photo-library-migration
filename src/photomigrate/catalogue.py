@@ -655,13 +655,21 @@ class Catalogue:
 
     # -- stage runs and the action log ----------------------------------------------------------
 
-    def applied_action_keys(self, stage: str) -> set[str]:
+    def applied_actions(self, stage: str) -> dict[str, dict[str, int]]:
+        """target -> {action key: when it was last applied}, for the stage's applied actions.
+
+        "When" is a number that only grows, so later applications compare greater.
+        """
         rows = self._conn.execute(
-            "SELECT a.key FROM actions a JOIN stage_runs r ON r.id = a.run_id "
-            "WHERE r.stage = ? AND a.status = 'applied'",
+            "SELECT a.target, a.key, MAX(a.id) AS last FROM actions a "
+            "JOIN stage_runs r ON r.id = a.run_id "
+            "WHERE r.stage = ? AND a.status = 'applied' GROUP BY a.target, a.key",
             (stage,),
         )
-        return {row["key"] for row in rows}
+        history: dict[str, dict[str, int]] = {}
+        for row in rows:
+            history.setdefault(row["target"], {})[row["key"]] = int(row["last"])
+        return history
 
     def start_run(self, stage: str, plan_path: str | None) -> int:
         cursor = self._conn.execute(
