@@ -31,6 +31,7 @@ def test_perceptual_hashes_are_hex_and_deterministic(tmp_path: Path) -> None:
     assert first is not None
     assert len(first.phash) == 16
     assert len(first.dhash) == 16
+    assert len(first.fine) == 64
     int(first.phash, 16)
 
 
@@ -89,7 +90,7 @@ def test_hamming_counts_differing_bits() -> None:
 
 
 def test_hashes_round_trip_through_a_string() -> None:
-    hashes = ImageHashes(phash="0123456789abcdef", dhash="fedcba9876543210")
+    hashes = ImageHashes(phash="0123456789abcdef", dhash="fedcba9876543210", fine="ab" * 32)
 
     assert ImageHashes.parse(str(hashes)) == hashes
 
@@ -104,3 +105,18 @@ def test_large_pictures_are_hashed_from_a_reduced_decode(tmp_path: Path) -> None
     assert a is not None
     assert b is not None
     assert hamming(a.phash, b.phash) <= 6
+
+
+def test_the_fine_hash_separates_crops_from_copies(tmp_path: Path) -> None:
+    image = synthetic_image(9)
+    original = image_hashes(write(tmp_path / "a.jpg", encode_image(image, "JPEG")))
+    copy = image_hashes(write(tmp_path / "b.jpg", encode_image(image, "JPEG", quality=25)))
+    crop = image_hashes(
+        write(tmp_path / "c.jpg", encode_image(image.crop((8, 6, 312, 234)), "JPEG"))
+    )
+
+    assert original is not None
+    assert copy is not None
+    assert crop is not None
+    assert hamming(original.fine, copy.fine) <= 12
+    assert hamming(original.fine, crop.fine) > 12

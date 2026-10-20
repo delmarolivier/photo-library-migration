@@ -338,3 +338,16 @@ def test_live_photo_motion_clips_keep_their_content_identifier(applied) -> None:
 
     for item in manifest.with_quirk("live-photo-motion"):
         assert stored[item.path].content_id == item.content_id
+
+
+def test_google_photos_get_perceptual_hashes(applied) -> None:  # type: ignore[no-untyped-def]
+    _, tmp, _, _ = applied
+    stored = items(tmp)
+
+    beach = stored[f"{ROOT}/Photos from 2019/IMG_1001.JPG"]
+    assert beach.phash is not None
+    assert beach.dhash is not None
+    assert beach.phash_fine is not None
+    assert len(beach.phash_fine) == 64
+    clip = stored[f"{ROOT}/Photos from 2019/IMG_1010.MOV"]
+    assert clip.phash is None
