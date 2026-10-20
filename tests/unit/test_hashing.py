@@ -5,9 +5,9 @@ import io
 from pathlib import Path
 
 import pytest
-from photomigrate.hashing import ImageHashes, hamming, image_hashes, sha256_file
 from PIL import Image
 
+from photomigrate.hashing import ImageHashes, hamming, image_hashes, sha256_file
 from photomigrate.testing.media import Exif, encode_image, synthetic_image
 
 
