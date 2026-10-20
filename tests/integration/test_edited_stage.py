@@ -94,6 +94,11 @@ def test_switching_policy_updates_every_pair(catalogue_path: Path, tmp_path: Pat
     assert {policy for _, _, policy in pairs(catalogue_path).values()} == {"original-only"}
     assert pair_edits(catalogue_path, tmp_path, "original-only").applied == 0
 
+    back = pair_edits(catalogue_path, tmp_path, "pair")
+
+    assert back.applied == 7
+    assert {policy for _, _, policy in pairs(catalogue_path).values()} == {"pair"}
+
 
 def test_an_edit_whose_original_is_missing_is_flagged(tmp_path: Path) -> None:
     b = TakeoutBuilder(seed=21)

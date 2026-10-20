@@ -225,6 +225,47 @@ def test_changed_inputs_are_applied_again(setup: tuple[Path, CopyStage, Path, Pa
     assert (stage.work / "a.jpg").read_bytes() == b"retouched"
 
 
+def test_an_input_changed_back_is_applied_again(setup: tuple[Path, CopyStage, Path, Path]) -> None:
+    _, stage, db, plans = setup
+    run(stage, db, plans, apply=True)
+    (stage.source / "a.jpg").write_bytes(b"retouched")
+    run(stage, db, plans, apply=True)
+    (stage.source / "a.jpg").write_bytes(b"a.jpg")
+
+    result = run(stage, db, plans, apply=True)
+
+    assert [a.target for a in result.plan.actions] == ["a.jpg"], "the first run's action was undone"
+    assert (stage.work / "a.jpg").read_bytes() == b"a.jpg"
+
+
+def test_two_actions_on_one_target_do_not_take_turns(
+    setup: tuple[Path, CopyStage, Path, Path],
+) -> None:
+    _, stage, db, plans = setup
+
+    class Tagged(CopyStage):
+        tag = False
+
+        def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+            yield from super().plan(catalogue)
+            if self.tag:
+                yield Action("tag", "a.jpg")
+
+        def apply(self, action: Action, catalogue: Catalogue) -> None:
+            if action.kind == "copy":
+                super().apply(action, catalogue)
+
+    tagged = Tagged(stage.source, stage.work)
+    run(tagged, db, plans, apply=True)
+    tagged.tag = True
+    assert [a.kind for a in run(tagged, db, plans, apply=True).plan.actions] == ["tag"]
+
+    result = run(tagged, db, plans, apply=True)
+
+    assert result.plan.actions == ()
+    assert result.plan.already_applied == 4
+
+
 def test_duplicate_actions_in_a_plan_run_once(setup: tuple[Path, CopyStage, Path, Path]) -> None:
     _, stage, db, plans = setup
 

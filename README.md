@@ -35,19 +35,21 @@ uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary" --apply
 ```
 
 ```sh
-# Propose duplicate photo and video groups across Google and iCloud (dry run, then --apply)
+# Link edits, propose duplicate groups, flag quality problems (dry run, then --apply)
 uv run photomigrate analyse
-uv run photomigrate analyse --apply
+uv run photomigrate --config photomigrate.toml analyse --apply
 ```
 
-Global options: `--catalogue PATH` (default `data/catalogue.sqlite`) and `--plan-dir PATH`
-(default `data/plans`).
+Global options: `--catalogue PATH` (default `data/catalogue.sqlite`), `--plan-dir PATH`
+(default `data/plans`) and `--config FILE`. The config file is TOML and only needs the
+settings it changes; [`photomigrate.example.toml`](photomigrate.example.toml) lists them all
+with their defaults. Unknown settings are errors.
 
 | Stage | What it does |
 |---|---|
 | `ingest` | Catalogue every item straight from the zips: match sidecars, hash, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
 | `index` | Read-only index of the iCloud library: hashes, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
-| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; later quality, best-shot, dates, clutter, location |
+| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); later best-shot, dates, clutter, location |
 | `review` | Local gallery on 127.0.0.1; decisions stored in the catalogue |
 | `import` | Dry-run by default; `--apply` imports approved items and stages removals |
 | `report` | Reconciliation report: every Google item accounted for |

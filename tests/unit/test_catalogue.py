@@ -558,3 +558,38 @@ def test_a_migration_that_breaks_foreign_keys_is_refused(tmp_path: Path) -> None
 
     with pytest.raises(sqlite3.IntegrityError, match="foreign keys broken"):
         migrate(conn, (parent, child))
+
+
+def test_v9_adds_quality_measurements_and_flags(tmp_path: Path) -> None:
+    path = tmp_path / "v8.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:8])
+    conn.execute(
+        "INSERT INTO items (id, source, source_key, kind, created_at, updated_at)"
+        " VALUES (1, 'google', 'a', 'photo', 't', 't')"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.item(1).quality == "{}"
+        assert catalogue.quality_flags() == {}
+
+
+def test_quality_flags_are_replaced_as_a_set(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO.replace(quality='{"sharpness": 3.0}'))
+    cat.set_quality_flags(item_id, {"blurry": 0.9, "under-exposed": 0.2})
+    before = dump(path)
+
+    cat.set_quality_flags(item_id, {"under-exposed": 0.2, "blurry": 0.9})
+
+    assert dump(path) == before, "unchanged flags are not rewritten"
+    cat.set_quality_flags(item_id, {"blurry": 0.5})
+    assert cat.quality_flags() == {item_id: {"blurry": 0.5}}
+    cat.set_quality_flags(item_id, {})
+    assert cat.quality_flags() == {}
+    assert cat.item(item_id).quality == '{"sharpness": 3.0}'
+
+
+def test_quality_flags_belong_to_an_item(cat: Catalogue) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        cat.set_quality_flags(999, {"blurry": 1.0})

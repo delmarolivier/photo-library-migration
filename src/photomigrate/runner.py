@@ -125,15 +125,22 @@ class StageFailedError(RuntimeError):
 
 
 def _plan(stage: Stage, catalogue: Catalogue, mode: Mode, created_at: datetime) -> Plan:
-    applied = catalogue.applied_action_keys(stage.name)
-    pending: dict[str, Action] = {}
-    done: set[str] = set()
+    history = catalogue.applied_actions(stage.name)
+    planned: dict[str, Action] = {}
     for action in stage.plan(catalogue):
-        if action.key in applied:
-            done.add(action.key)
-        else:
-            pending.setdefault(action.key, action)
-    return Plan(stage.name, mode, created_at, tuple(pending.values()), len(done))
+        planned.setdefault(action.key, action)
+
+    def done(action: Action) -> bool:
+        """Applied, and not undone since by an action on the same target that the stage no
+        longer plans (a setting changed, then changed back)."""
+        applied = history.get(action.target, {})
+        when = applied.get(action.key)
+        return when is not None and all(
+            later <= when or key in planned for key, later in applied.items()
+        )
+
+    pending = tuple(action for action in planned.values() if not done(action))
+    return Plan(stage.name, mode, created_at, pending, len(planned) - len(pending))
 
 
 def run_stage(

@@ -18,6 +18,7 @@ from photomigrate.testing.media import (
     encode_video,
     reencode_video,
     synthetic_image,
+    synthetic_photo,
     video_frames,
 )
 
@@ -219,3 +220,12 @@ def test_reencoding_without_ffmpeg_is_reported(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(MediaToolMissingError, match="re-encode"):
         reencode_video(b"", "mp4")
+
+
+def test_synthetic_photos_have_fine_texture_like_a_real_picture() -> None:
+    photo = synthetic_photo(3, size=(200, 100))
+
+    assert photo.size == (200, 100)
+    assert photo.tobytes() == synthetic_photo(3, size=(200, 100)).tobytes()
+    flat = synthetic_image(3, size=(200, 100))
+    assert 2 < mean_difference(photo, flat) < 30, "texture on top of the same scene"

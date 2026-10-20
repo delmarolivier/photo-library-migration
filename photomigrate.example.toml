@@ -1,0 +1,31 @@
+# photomigrate settings, with their built-in defaults.
+#
+# Copy this file, keep only what you change, and pass it with:
+#   photomigrate --config photomigrate.toml analyse
+# Unknown settings are errors, so a typo cannot silently fall back to a default.
+
+# Quality flags (photomigrate analyse). A flag is a hint for the review, with a score
+# from 0 (just past the threshold) to 1 (as bad as it gets). Nothing is decided here.
+
+[quality.photo]
+# Variance of the Laplacian, measured with the long side at most 1024 px.
+blurry_below_sharpness = 30.0
+low_resolution_below_megapixels = 0.3
+# Mean luminance, 0 to 255.
+under_exposed_below_brightness = 40.0
+over_exposed_above_brightness = 215.0
+# Also badly exposed: more than this share of pixels near black (< 16) or near white (> 240).
+dark_above_fraction = 0.5
+bright_above_fraction = 0.5
+# Luminance standard deviation. A flat frame is a pocket shot, a black frame or a lens cap.
+accidental_below_contrast = 10.0
+
+[quality.video]
+# Live Photo motion halves are never short clips.
+short_below_seconds = 1.5
+# Mean luminance of 8 frames sampled across the video.
+black_below_brightness = 12.0
+# Mean change between those frames (0 to 255).
+static_below_motion = 2.0
+# Pixels on the short side.
+tiny_below_short_side = 240
