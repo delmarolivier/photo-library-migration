@@ -39,6 +39,8 @@
     public history.
   - The guard is an audit hook rather than a monkeypatch, so it also catches subprocesses
     (exiftool, ffmpeg) and sqlite3 (osxphotos). See docs/DESIGN.md.
+  - Google-made creations go to the clutter review queue; Takeout people names become
+    `People/<name>` keywords (Delmar, 2026-10-20; added to CLAUDE.md product decisions).
 - Blockers / questions: see "Open questions" above.
 - Handoff notes for next session:
   - Fixture media must be generated under `tmp_path`, or committed under `tests/fixtures/`
