@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
+
 from photomigrate.dates import same_moment
 
 TAKEN = datetime(2019, 7, 1, 10, 34, 56, tzinfo=UTC)
