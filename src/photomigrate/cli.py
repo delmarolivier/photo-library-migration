@@ -12,6 +12,7 @@ from rich.console import Console
 
 from photomigrate import __version__
 from photomigrate.analyse.best_shot import BestShotStage
+from photomigrate.analyse.clutter import ClutterStage, ZeroShot
 from photomigrate.analyse.date_audit import DateAuditStage
 from photomigrate.analyse.date_fixes import DateFixStage
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
@@ -203,8 +204,9 @@ def analyse(
 ) -> None:
     """Link edits to originals, propose duplicate groups (photos and videos) with keepers,
     flag quality problems with scores (thresholds from --config), group similar shots,
-    keeping the best two of each (window, similarity and weights from --config), apply the
-    review's answers about dates, and batch the dates still in doubt for the review.
+    keeping the best two of each (window, similarity and weights from --config), queue
+    clutter (screenshots, documents, memes, forwards, Google creations), apply the review's
+    answers about dates, and batch the dates still in doubt for the review.
 
     Proposals only: the review decides.
     """
@@ -218,6 +220,7 @@ def analyse(
         VideoDedupeStage(VideoDedupeConfig(signature_max=signature_max)),
         QualityStage(settings.config.quality),
         BestShotStage(settings.config.best_shot),
+        ClutterStage(settings.config.clutter, ZeroShot(default_embedder())),
         DateFixStage(),
         DateAuditStage(now=datetime.now(UTC)),
     )
