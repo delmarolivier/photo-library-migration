@@ -17,6 +17,7 @@ import pwd
 import re
 import shlex
 import sys
+import urllib.parse
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cached_property
@@ -119,8 +120,8 @@ def _path_args(args: Iterable[object]) -> Iterator[str]:
     for arg in args:
         if _is_pathlike(arg):
             path = os.fsdecode(arg)  # type: ignore[arg-type]
-            if path.startswith("file:"):  # sqlite3 URI form
-                path = path.removeprefix("file:").split("?", 1)[0]
+            if path.startswith("file:"):  # sqlite3 URI form, possibly percent-encoded
+                path = urllib.parse.unquote(urllib.parse.urlsplit(path).path)
             yield path
 
 
