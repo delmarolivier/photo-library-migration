@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M3-03] CLA-85 (date audit).
-- Next issue: [M3-04] CLA-86 (clutter detection).
+- Last completed issue: [M3-04] CLA-86 (clutter detection).
+- Next issue: [M3-05] CLA-87 (location backfill).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Best shot: `min_similarity` defaults to 0.94, measured on the sample (DESIGN, "Best
@@ -17,6 +17,20 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M3-04
+- Ingest and index detect text with Vision (`text_regions`, catalogue v12 `items.text`); index
+  records Photos' `screenshot` flag. open_clip text prompts (`embed_texts`) give zero-shot
+  labels where Vision measured no text.
+- `analyse.clutter` scores google-creation, screenshot, document, meme and forward per item
+  (evidence combined as independent clues, camera penalties), and queues the best category
+  at or above `[clutter] min_score` (0.5) in the `clutter` table with its evidence.
+- Real sample: the first rules queued 86 "documents" from Vision boxing textured scenes and 32
+  "screenshots" that were mostly 1080p videos. After the fixes: about 138 creations,
+  7 documents, 7 screenshots.
+- Tests: 956, 100%.
+- Handoff: M3-06 shows the queue by category with the evidence and records decisions per
+  item; Google creations are never imported unless Delmar picks them there.
+
 ### 2026-10-20: session 1 (continued): M3-03
 - Delmar asked to keep going through every milestone that needs no human action without
   waiting for confirmation (the CLAUDE.md safety rules still apply).

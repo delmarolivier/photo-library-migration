@@ -38,6 +38,18 @@ review. Nothing is decided.
 - **Fixtures** (`testing.media`): `text_page` (a receipt), `captioned` (a meme), `with_sign`
   (a street sign in a photo). On macOS the real Vision runs over the same Takeout as the Linux
   test, which uses the summaries Vision gives.
+- **On the real sample** (2026-10-20, re-ingested read-only into /tmp in 4 min 55 s; two
+  cameras, iPhone 4S and 5, and 197 items without one):
+  - The first rules queued 138 Google creations (Delmar expected 130 or more), 86 documents
+    and 32 screenshots. 74 of the documents were a single "text" box 57 to 79% of the
+    picture's height: Vision boxing a textured scene. 23 of the screenshots were 1080p camera
+    videos.
+  - The fixes: drop boxes taller than 30% of the picture (no line of text is), count coverage
+    and paper only from 3 regions up, and match a screen size only for photos, at a weight that
+    needs a second clue.
+  - After the fixes (estimated from the stored summaries): 138 creations, 7 documents (the
+    surest with 8 to 11 text regions) and 7 screenshots, out of 3,308 items. No memes or
+    forwards: the album has none of their names.
 
 ## Date audit (M3-03)
 
