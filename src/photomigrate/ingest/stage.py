@@ -229,6 +229,7 @@ class IngestStage:
             flags=frozenset(flags),
             metadata_plan=json.dumps(plan.to_dict(), sort_keys=True, ensure_ascii=False),
             google_url=url,
+            content_id=embedded.content_id,
         )
         item_id = catalogue.upsert_item(item)
         if album_id is not None:

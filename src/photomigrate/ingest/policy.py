@@ -22,14 +22,13 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from photomigrate.catalogue import DateSource
+from photomigrate.dates import same_moment
 from photomigrate.ingest.exif import Embedded, MetadataWrite
 from photomigrate.ingest.names import Kind, date_from_filename
 from photomigrate.ingest.sidecars import SidecarData
 
 PLACEHOLDER_DAYS = frozenset({date(1970, 1, 1), date(1980, 1, 1), date(2000, 1, 1)})
 _SAME_INSTANT = timedelta(seconds=2)
-_MAX_OFFSET = timedelta(hours=14)
-_QUARTER_HOUR = 900
 
 
 @dataclass(frozen=True)
@@ -47,14 +46,7 @@ def is_placeholder(when: datetime) -> bool:
 
 
 def _conflict(embedded: datetime, sidecar: datetime) -> bool:
-    if embedded.tzinfo is not None:
-        return abs(embedded - sidecar) > _SAME_INSTANT
-    # Local time with an unknown offset: equal if a whole number of quarter hours apart.
-    delta = abs(embedded - sidecar.astimezone(UTC).replace(tzinfo=None))
-    if delta > _MAX_OFFSET:
-        return True
-    remainder = delta.total_seconds() % _QUARTER_HOUR
-    return min(remainder, _QUARTER_HOUR - remainder) > _SAME_INSTANT.total_seconds()
+    return not same_moment(embedded, sidecar, _SAME_INSTANT)
 
 
 def _sidecar_date(sidecar: SidecarData | None, flags: set[str]) -> datetime | None:
