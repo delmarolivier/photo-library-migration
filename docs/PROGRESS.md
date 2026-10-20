@@ -2,10 +2,13 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M4-03] CLA-91 (reconciliation report).
-- Next issue: [M4-04] CLA-92 (runbook and real-data rehearsal; the rehearsal needs Delmar).
+- Last completed issue: [M4-03] CLA-91 (reconciliation report). M4-04 (CLA-92): the runbook
+  is written (docs/RUNBOOK.md). Every issue that needs no human action is done.
+- Next: Delmar reviews the runbook, then runs the rehearsal with Claude (CLA-92).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
+  - Please review docs/RUNBOOK.md (CLA-92 acceptance). Then the rehearsal: it imports the
+    one-album sample into your real library on the Air, with a GO before each `--apply`.
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
     under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
     `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos`.
@@ -23,6 +26,15 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-21: session 1 (continued): M4-04 (runbook)
+- docs/RUNBOOK.md: preparation, backup, permissions, rehearsal on the sample (its own
+  catalogue), Delmar's checks in Photos, the full run in batches, the final report, and the
+  manual cleanup. There is a GO checkpoint before every `--apply`.
+- Dry rehearsal of the commands on the sample here (no library): it showed that `$R`
+  expansion fails in zsh (the runbook now uses the `PHOTOMIGRATE_*` variables), and that
+  best-shot pairs counted as pending although nobody is asked about them (fixed, tested).
+- Tests: 1,159, 100%.
+
 ### 2026-10-21: session 1 (continued): M4-03
 - `photomigrate report`: HTML and CSV, one status per Google item (imported with uuid,
   duplicate-of-existing with the uuid that stays, rejected-by-user with the reason, or
