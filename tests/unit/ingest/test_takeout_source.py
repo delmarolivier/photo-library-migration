@@ -185,3 +185,60 @@ def test_an_extracted_tree_ignores_files_outside_google_photos(tmp_path: Path) -
 
     with open_takeout(tmp_path / "tree") as takeout:
         assert takeout.ignored == 2
+
+
+def test_locators_name_the_part_and_member_relative_to_the_takeout(tmp_path: Path) -> None:
+    manifest = small_takeout(tmp_path / "in")
+
+    with open_takeout(tmp_path / "in") as takeout:
+        entry = next(e for e in takeout.entries if e.path.endswith("IMG_1.JPG"))
+        assert takeout.locator(entry) == f"{entry.part}::{entry.path}"
+        assert takeout.entry(takeout.locator(entry)) == entry
+        assert manifest.parts[entry.path] >= 1
+
+
+def test_tree_locators_are_plain_relative_paths(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=3)
+    b.photo("Photos from 2019", "IMG_1.JPG", taken=TAKEN)
+    b.write_tree(tmp_path / "tree")
+
+    with open_takeout(tmp_path / "tree") as takeout:
+        (entry,) = [e for e in takeout.entries if e.path.endswith(".JPG")]
+        assert takeout.locator(entry) == entry.path
+        assert takeout.entry(entry.path) == entry
+
+
+def test_local_copy_streams_a_zip_entry_to_a_temporary_file(tmp_path: Path) -> None:
+    small_takeout(tmp_path / "in")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    with open_takeout(tmp_path / "in") as takeout:
+        entry = next(e for e in takeout.entries if e.path.endswith("IMG_1.JPG"))
+        expected = takeout.read(entry.path)
+        with takeout.local_copy(entry, scratch) as (path, sha256):
+            assert path.read_bytes() == expected
+            assert path.suffix == ".JPG"
+            assert sha256 == hashlib.sha256(expected).hexdigest()
+            assert path.is_relative_to(scratch)
+
+    assert list(scratch.iterdir()) == []
+
+
+def test_local_copy_of_a_tree_entry_is_the_original_itself(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=3)
+    b.photo("Photos from 2019", "IMG_1.JPG", taken=TAKEN)
+    b.write_tree(tmp_path / "tree")
+
+    with open_takeout(tmp_path / "tree") as takeout:
+        (entry,) = [e for e in takeout.entries if e.path.endswith(".JPG")]
+        with takeout.local_copy(entry, tmp_path) as (path, sha256):
+            assert path == tmp_path / "tree" / entry.path
+            assert sha256 == digest(path)
+
+
+def test_unknown_locators_raise(tmp_path: Path) -> None:
+    small_takeout(tmp_path / "in")
+
+    with open_takeout(tmp_path / "in") as takeout, pytest.raises(KeyError):
+        takeout.entry("nope.zip::Takeout/Google Photos/x.jpg")
