@@ -723,3 +723,15 @@ def test_an_inferred_location_is_replaced_and_retired(cat: Catalogue, path: Path
     assert cat.inferred_locations()[item_id][1] == "timeline-visit"
     cat.set_inferred_location(item_id, None)
     assert cat.inferred_locations() == {}
+
+
+def test_v14_records_imports(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO)
+    assert cat.imports() == {}
+
+    cat.record_import(item_id, "UUID-1", "ab" * 32, "batch-000001")
+    before = dump(path)
+    cat.record_import(item_id, "UUID-1", "ab" * 32, "batch-000001")
+
+    assert dump(path) == before
+    assert cat.imports() == {item_id: ("UUID-1", "ab" * 32, "batch-000001")}

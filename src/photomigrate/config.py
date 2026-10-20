@@ -107,11 +107,19 @@ class LocationConfig:
 
 
 @dataclass(frozen=True)
+class ImportConfig:
+    batch_gigabytes: float = 20.0
+    """Originals streamed, prepared and imported together; their working copies must fit on
+    the disk at once (the Air has about 40 GB free)."""
+
+
+@dataclass(frozen=True)
 class Config:
     quality: QualityConfig = field(default_factory=QualityConfig)
     best_shot: BestShotConfig = field(default_factory=BestShotConfig)
     clutter: ClutterConfig = field(default_factory=ClutterConfig)
     location: LocationConfig = field(default_factory=LocationConfig)
+    importer: ImportConfig = field(default_factory=ImportConfig, metadata={"toml": "import"})
 
 
 def load_config(path: Path | None) -> Config:
@@ -134,13 +142,15 @@ def load_config(path: Path | None) -> Config:
 
 def _build[T](cls: type[T], data: dict[str, Any], prefix: str) -> T:
     hints = get_type_hints(cls)
-    names = {f.name for f in dataclasses.fields(cls)}  # type: ignore[arg-type]
+    # A TOML name can differ from its field's ("import" is a Python keyword).
+    fields = {f.metadata.get("toml", f.name): f.name for f in dataclasses.fields(cls)}  # type: ignore[arg-type]
     values: dict[str, Any] = {}
-    for name, value in data.items():
-        where = prefix + name
-        if name not in names:
+    for toml_name, value in data.items():
+        where = prefix + toml_name
+        if toml_name not in fields:
             what = "section" if isinstance(value, dict) else "setting"
             raise ConfigError(f"unknown {what} {where!r}")
+        name = fields[toml_name]
         hint = hints[name]
         if dataclasses.is_dataclass(hint):
             if not isinstance(value, dict):

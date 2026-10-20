@@ -2,6 +2,49 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Import (M4-01)
+
+`photomigrate import --takeout DIR [--library PATH --apply]` (`importer.stage`). It's a dry
+run unless `--apply`. `--apply` also needs the backup marker (`photomigrate confirm-backup`
+asks whether a Time Machine backup of the library finished, then writes
+`data/BACKUP-CONFIRMED`) and a yes at the prompt.
+
+- **What each item becomes** (`importer.outcomes`, shared with To Delete and the report):
+  - A Google item is `import`, `duplicate-of-existing` (a confirmed duplicate, with the copy
+    that stays), `rejected-by-user` (best-shot loser, clutter, quality or unmatched reject,
+    or the side of an edit pair not kept), `follows` (a Live Photo clip goes with its still),
+    or `pending`.
+  - `pending` means a question that decides the item is unanswered: a duplicate or best-shot
+    group, or a Google creation, which is never imported without a yes.
+  - A confirmed duplicate wins over a rejection, and a rejection over a pending question.
+- **Batches:** importable items not imported yet, a Live Photo's still and clip as one asset,
+  `[import] batch_gigabytes` (20) of originals per `import-batch` action.
+- **Applying a batch:**
+  1. Stream each original out of its zip into a scratch folder.
+  2. Write the working copy with exiftool `-o` (the original is only read). It gets
+     `date_fixes.planned_write` (ingest's plan plus the review's date) and the approved
+     place.
+  3. Import the batch into "From Google". Photos' duplicate dialog is skipped, because the
+     catalogue already decided.
+  4. Set the favourite, caption and keywords (`People/…`, `date-approx`,
+     `location-inferred`, `from-google`). Anything exiftool can't write into the file goes
+     through Photos instead.
+  5. Add each asset to its Google albums, then record the import (catalogue v14 `imports`:
+     Photos uuid, working-copy SHA-256, batch). The scratch folder goes with the batch.
+  Recorded items are never imported again.
+- **Existing iCloud items:** `set-date` for an answered date, and `set-location` (plus
+  `location-inferred`) for an approved place. Photos changes them in place.
+- **The library** (`importer.library`): `PhotoscriptLibrary` drives Photos.app (photoscript,
+  which comes with osxphotos). Photos works on whatever library it has open, so it first
+  checks that Photos' open library is the `--library` given, and refuses otherwise. It maps
+  imported assets back by file name, which the importer makes unique (`<item id>-<name>`).
+- **Tests** never drive Photos.app (CLAUDE.md rule 4). `testing.photos.DisposableLibrary` is
+  a folder-backed library that records every asset, album, favourite, caption, keyword, date
+  and place. The photoscript adapter is tested against a fake photoscript.
+  `tests/macos/test_photos_app_import.py` is the real acceptance test: it runs only when
+  `PHOTOMIGRATE_PHOTOS_APP_LIBRARY` names a throwaway library under /tmp that Photos has
+  open. Delmar runs it on the Air.
+
 ## Review gallery (M3-06)
 
 `photomigrate review [--takeout DIR] [--library PATH] [--port 8765]` serves a local gallery

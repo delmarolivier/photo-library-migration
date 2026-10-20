@@ -33,7 +33,7 @@ def test_no_arguments_shows_help() -> None:
 
 
 @pytest.mark.parametrize(
-    "stage", [s for s in STAGES if s not in ("ingest", "index", "analyse", "review")]
+    "stage", [s for s in STAGES if s not in ("ingest", "index", "analyse", "review", "import")]
 )
 def test_stub_stage_reports_not_implemented_and_fails(stage: str) -> None:
     result = runner.invoke(app, [stage])
