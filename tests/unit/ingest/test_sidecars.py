@@ -247,7 +247,7 @@ def test_edited_copy_whose_original_is_missing_finds_the_sidecar_by_name() -> No
 def test_unmatched_media_and_orphan_sidecars_are_reported() -> None:
     folder = match_folder(
         ["IMG_1006.JPG", "IMG_1011.MOV"],
-        ["IMG_9999.JPG.supplemental-metadata.json", "metadata.json"],
+        ["IMG_9999.JPG.supplemental-metadata.json", "metadata.json", "notes.txt"],
     )
 
     assert {m.method for m in folder.matches.values()} == {"unmatched"}
