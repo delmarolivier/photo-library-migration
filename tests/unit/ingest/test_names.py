@@ -4,6 +4,7 @@ import unicodedata
 from datetime import datetime
 
 import pytest
+
 from photomigrate.ingest.names import date_from_filename, media_kind, parse_media_name
 
 
@@ -69,6 +70,7 @@ def test_a_cut_edit_suffix_counts_only_at_the_length_limit() -> None:
 
     assert parse_media_name(at_limit).edited == "Screenshot_20191105-123456_LongName_ABCD"
     assert parse_media_name("photo-ed.jpg").edited is None
+    assert parse_media_name("Screenshot_20191105-123456_LongName_ABCDEFG.jpg").edited is None
     assert parse_media_name("IMG_1234-red.jpg").edited is None
 
 
