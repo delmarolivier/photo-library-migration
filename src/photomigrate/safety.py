@@ -22,7 +22,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePath
-from typing import Any
+from typing import Any, Self
 
 PathArg = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
@@ -284,7 +284,7 @@ class ReadOnlyGuard:
                     f"{self.root} is read-only (CLAUDE.md rule 6)"
                 )
 
-    def __enter__(self) -> ReadOnlyGuard:
+    def __enter__(self) -> Self:
         _install_audit_hook()
         _read_only_guards.append(self)
         return self
@@ -294,6 +294,35 @@ class ReadOnlyGuard:
 
 
 _read_only_guards: list[ReadOnlyGuard] = []
+
+_REMOVING_EVENTS = frozenset({"os.remove", "os.rmdir", "shutil.rmtree"})
+_MOVING_EVENTS = frozenset({"os.rename", "shutil.move"})  # os.replace raises os.rename
+
+
+class NoDeleteGuard(ReadOnlyGuard):
+    """While active, refuses removing, renaming or moving anything inside ``roots`` (CLAUDE.md
+    rule 3). Adding files is fine: an import adds to the library, it never takes away."""
+
+    def __init__(self, roots: Iterable[Path]) -> None:
+        roots = list(roots)
+        super().__init__(roots[0])
+        self.roots = roots
+        self._roots = _root_forms(roots)
+
+    def check(self, event: str, args: tuple[Any, ...]) -> None:
+        if event in _REMOVING_EVENTS:
+            paths = list(_path_args(args[:1]))
+        elif event in _MOVING_EVENTS:  # moving out removes; moving in can overwrite
+            paths = list(_path_args(args[:2]))
+        else:
+            return
+        for path in paths:
+            if self._inside(path):
+                self.violations.append(Violation(event=event, path=path))
+                raise ForbiddenPathError(
+                    f"photomigrate no-delete guard blocked {event} on {path!r}: nothing in "
+                    f"{', '.join(map(str, self.roots))} is ever removed (CLAUDE.md rule 3)"
+                )
 
 
 def announce_path(path: PathArg) -> None:
@@ -314,6 +343,14 @@ _REMOVE_OBJECTS = frozenset(
     {"asset", "assets", "photo", "photos", "media", "item", "items", "file", "files"}
 )
 _DENY_DOTTED = frozenset({"os.remove"})
+_MOVES = frozenset({"os.rename", "os.replace", "shutil.move"})
+"""Moving a source file away removes it from where it was; renames count too."""
+_ALLOW = re.compile(r"#\s*no-delete-check:\s*allow\s*\(\s*\S")
+"""``# no-delete-check: allow (why)`` on the line lets a move through, never a delete."""
+_SCRIPT = re.compile(r"tell\s+application|Application\(", re.IGNORECASE)
+_SCRIPT_DELETE = re.compile(r"\bdelete\b", re.IGNORECASE)
+_ALBUM = "To Delete"
+"""The staging album's name, which scripts may mention: the command is lowercase."""
 
 
 @dataclass(frozen=True)
@@ -365,13 +402,57 @@ def _referenced_names(node: ast.AST) -> list[tuple[str, list[str]]]:
     return []
 
 
+def _dynamic_name(node: ast.AST) -> str | None:
+    """``getattr(x, "remove")``: a denied name looked up by its string."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= 2
+        and isinstance(node.args[1], ast.Constant)
+        and isinstance(node.args[1].value, str)
+    ):
+        name = node.args[1].value
+        if name == "remove" or _is_denied_name(name):
+            return f"getattr:{name}"
+    return None
+
+
+def _script_erasing(node: ast.AST) -> str | None:
+    """An AppleScript or JXA snippet for Photos that erases media. It would run through
+    osascript, where no Python call can be seen. The album name is not the command."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        text = node.value.replace(_ALBUM, "")
+        if _SCRIPT.search(text) and _SCRIPT_DELETE.search(text):
+            return "script:delete"
+    return None
+
+
+def _is_move(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Call):
+        dotted = _dotted(node.func)
+        if dotted in _MOVES:
+            return dotted
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "rename":
+            return dotted or "rename"
+    return None
+
+
 def find_forbidden_calls(source: str, filename: str = "<string>") -> list[Finding]:
-    findings = [
-        Finding(path=filename, line=getattr(node, "lineno", 0), name=dotted)
-        for node in ast.walk(ast.parse(source, filename))
-        for dotted, parts in _referenced_names(node)
-        if dotted in _DENY_DOTTED or any(_is_denied_name(part) for part in parts)
-    ]
+    lines = source.splitlines()
+    findings = []
+    for node in ast.walk(ast.parse(source, filename)):
+        line = getattr(node, "lineno", 0)
+        names = [
+            dotted
+            for dotted, parts in _referenced_names(node)
+            if dotted in _DENY_DOTTED or any(_is_denied_name(part) for part in parts)
+        ]
+        names += [found for found in (_dynamic_name(node), _script_erasing(node)) if found]
+        move = _is_move(node)
+        if move and not (0 < line <= len(lines) and _ALLOW.search(lines[line - 1])):
+            names.append(move)
+        findings += [Finding(path=filename, line=line, name=name) for name in names]
     return sorted(findings, key=lambda finding: finding.line)
 
 

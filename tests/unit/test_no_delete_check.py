@@ -109,3 +109,44 @@ def test_main_defaults_to_src_from_sys_argv(
 
     assert main() == 1
     assert "bad.py:1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'getattr(os, "remove")(p)',
+        "getattr(path, 'unlink')()",
+        'fn = getattr(library, "delete_album")',
+        """script = 'tell application "Photos" to delete media item id "X"'""",
+        """js = 'Application("Photos").delete(Application("Photos").mediaItems.byId(x))'""",
+        "import os\nos.rename(a, b)",
+        "import os\nos.replace(a, b)",
+        "import shutil\nshutil.move(a, b)",
+        "Path(a).rename(b)",
+    ],
+)
+def test_the_gaps_found_earlier_are_closed(source: str) -> None:
+    findings = find_forbidden_calls(source, "mod.py")
+
+    assert len(findings) == 1, findings
+    assert findings[0].line == source.count("\n") + 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """script = 'tell application "Photos" to add photos to album "To Delete"'""",
+        "text = 'please delete nothing'",
+        "name.replace('a', 'b')",
+        "getattr(item, 'source')",
+        "getattr(item, name)",
+        "os.replace(staged, target)  # no-delete-check: allow (our own staged copy)",
+    ],
+)
+def test_strings_replaces_and_allowed_moves_are_not_flagged(source: str) -> None:
+    assert find_forbidden_calls(source) == []
+
+
+def test_an_allowance_needs_a_reason_and_never_covers_a_delete() -> None:
+    assert find_forbidden_calls("os.replace(a, b)  # no-delete-check: allow")
+    assert find_forbidden_calls("os.remove(p)  # no-delete-check: allow (please)")
