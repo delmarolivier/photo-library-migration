@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M2-02] CLA-80 (photo dedupe: exact and perceptual).
-- Next issue: [M2-03] CLA-81 (video dedupe).
+- Last completed issue: [M2-03] CLA-81 (video dedupe).
+- Next issue: [M2-04] CLA-82 (edited versions handling).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
@@ -15,6 +15,12 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M2-03
+- Video signatures (`hashing.video_signature`, 8 sampled frames) and bitrate at ingest and index
+  (catalogue v7). `analyse.dedupe_video` plus `analyse.grouping` (shared by both dedupe stages,
+  which scope their groups by key prefix). `photomigrate analyse` runs both.
+- Tests: 649, 100%.
+
 ### 2026-10-20: session 1 (continued): M2-02
 - `analyse.dedupe_photo` plus `photomigrate analyse`; a 256-bit pHash (`phash_fine`, catalogue v6);
   Google photos are now hashed at ingest; `synthetic_image(jitter=…)` gives "a moment later" shots.

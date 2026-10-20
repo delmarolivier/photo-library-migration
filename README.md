@@ -35,7 +35,7 @@ uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary" --apply
 ```
 
 ```sh
-# Propose duplicate groups across Google and iCloud (dry run, then --apply)
+# Propose duplicate photo and video groups across Google and iCloud (dry run, then --apply)
 uv run photomigrate analyse
 uv run photomigrate analyse --apply
 ```
@@ -47,7 +47,7 @@ Global options: `--catalogue PATH` (default `data/catalogue.sqlite`) and `--plan
 |---|---|
 | `ingest` | Catalogue every item straight from the zips: match sidecars, hash, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
 | `index` | Read-only index of the iCloud library: hashes, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
-| `analyse` | Photo dedupe (exact and perceptual) with proposed keepers; later also video dedupe, edits, quality, best-shot, dates, clutter, location |
+| `analyse` | Photo and video dedupe (exact and perceptual) with proposed keepers; later also edits, quality, best-shot, dates, clutter, location |
 | `review` | Local gallery on 127.0.0.1; decisions stored in the catalogue |
 | `import` | Dry-run by default; `--apply` imports approved items and stages removals |
 | `report` | Reconciliation report: every Google item accounted for |
