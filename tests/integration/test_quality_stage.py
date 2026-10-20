@@ -1,6 +1,7 @@
 """quality: measurements taken at ingest, flags with scores from the configured thresholds."""
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -147,5 +148,7 @@ def test_a_bad_config_file_stops_before_anything_runs(catalogue_path: Path, tmp_
     result = CliRunner().invoke(app, [*args, "analyse", "--apply"])
 
     assert result.exit_code == 2
-    assert "unknown setting 'quality.photo.blury'" in result.output
+    # Rich may colour the error panel and wrap it inside its borders
+    text = " ".join(re.sub(r"\x1b\[[0-9;]*m", "", result.output).replace("│", " ").split())
+    assert "unknown setting 'quality.photo.blury'" in text
     assert all(not f for f in flags(catalogue_path).values())
