@@ -10,7 +10,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import sqlite3
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -168,11 +168,28 @@ CREATE TABLE keywords (
 );
 """
 
+SCHEMA_V4 = """
+-- Apple's Live Photo identifier (MakerNotes on the still, a QuickTime key on the motion clip).
+ALTER TABLE items ADD COLUMN content_id TEXT;
+CREATE INDEX items_content_id ON items (content_id);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
     Migration(3, "albums, copies and keywords", SCHEMA_V3),
+    Migration(4, "content identifiers", SCHEMA_V4),
 )
+
+GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair"]
+
+
+@dataclass(frozen=True)
+class Group:
+    id: int
+    kind: GroupKind
+    key: str
+    details: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -229,6 +246,7 @@ class CatalogueItem:
     flags: frozenset[str] = field(default_factory=frozenset)
     metadata_plan: str = "{}"
     google_url: str | None = None
+    content_id: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
@@ -382,6 +400,70 @@ class Catalogue:
             (item_id,),
         )
         return {row["source"]: datetime.fromisoformat(row["value"]) for row in rows}
+
+    def item(self, item_id: int) -> CatalogueItem:
+        row = self._conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+        if row is None:
+            raise KeyError(item_id)
+        return _from_row(row)
+
+    def add_flags(self, item_id: int, flags: Iterable[str]) -> None:
+        """Add flags to an item; nothing is written if it already has them all."""
+        current = self.item(item_id).flags
+        merged = current | set(flags)
+        if merged != current:
+            self._conn.execute(
+                "UPDATE items SET flags = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(sorted(merged)), self.now(), item_id),
+            )
+
+    # -- groups -----------------------------------------------------------------------------
+
+    def upsert_group(self, kind: GroupKind, key: str, details: Mapping[str, Any]) -> int:
+        encoded = json.dumps(dict(details), sort_keys=True, ensure_ascii=False)
+        cursor = self._conn.execute(
+            "INSERT INTO groups (kind, key, details, created_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (kind, key) DO UPDATE SET details = excluded.details "
+            "WHERE groups.details IS NOT excluded.details RETURNING id",
+            (kind, key, encoded, self.now()),
+        )
+        returned = cursor.fetchone()
+        if returned is None:
+            returned = self._conn.execute(
+                "SELECT id FROM groups WHERE kind = ? AND key = ?", (kind, key)
+            ).fetchone()
+        return int(returned["id"])
+
+    def groups(self, kind: GroupKind) -> list[Group]:
+        rows = self._conn.execute("SELECT * FROM groups WHERE kind = ? ORDER BY id", (kind,))
+        return [
+            Group(row["id"], row["kind"], row["key"], json.loads(row["details"])) for row in rows
+        ]
+
+    def set_group_members(
+        self, group_id: int, members: Iterable[tuple[int, str | None, int | None]]
+    ) -> None:
+        """Make the group's members exactly ``members`` (item id, role, rank)."""
+        wanted = set(members)
+        have = set(self.group_members(group_id))
+        for item_id, _role, _rank in sorted(have - wanted, key=repr):
+            self._conn.execute(
+                "DELETE FROM group_members WHERE group_id = ? AND item_id = ?", (group_id, item_id)
+            )
+        for item_id, role, rank in sorted(wanted - have, key=repr):
+            self._conn.execute(
+                "INSERT OR REPLACE INTO group_members (group_id, item_id, role, rank) "
+                "VALUES (?, ?, ?, ?)",
+                (group_id, item_id, role, rank),
+            )
+
+    def group_members(self, group_id: int) -> list[tuple[int, str | None, int | None]]:
+        rows = self._conn.execute(
+            "SELECT item_id, role, rank FROM group_members WHERE group_id = ? "
+            "ORDER BY rank, item_id",
+            (group_id,),
+        )
+        return [(int(row["item_id"]), row["role"], row["rank"]) for row in rows]
 
     def find_by_sha256(self, source: Source, sha256: str) -> list[CatalogueItem]:
         rows = self._conn.execute(
