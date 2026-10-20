@@ -259,7 +259,7 @@ def match_folder(media: Iterable[str], sidecars: Iterable[str]) -> FolderMatch:
         if not is_non_sidecar_json(name) and (s := _sidecar(name)) is not None
     ]
     originals = {
-        name: p for name, p in parsed.items() if p.edited is None or not _original_of(p, parsed)
+        name: p for name, p in parsed.items() if p.edited is None or not original_of(p, parsed)
     }
 
     ranked = sorted(
@@ -286,7 +286,7 @@ def match_folder(media: Iterable[str], sidecars: Iterable[str]) -> FolderMatch:
         if p.edited is None:
             matches[name] = Match(None, "unmatched")
             continue
-        original = _original_of(p, parsed)
+        original = original_of(p, parsed)
         if original is not None:
             found = matches.get(original)
             sidecar_name = found.sidecar if found else None
@@ -302,7 +302,7 @@ def match_folder(media: Iterable[str], sidecars: Iterable[str]) -> FolderMatch:
     return FolderMatch(matches, orphans)
 
 
-def _original_of(edit: MediaName, folder: Mapping[str, MediaName]) -> str | None:
+def original_of(edit: MediaName, folder: Mapping[str, MediaName]) -> str | None:
     """The original media in the folder for an edited copy: same stem and index."""
     found = [
         name

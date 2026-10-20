@@ -2,6 +2,27 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Edited versions (M2-04)
+
+`photomigrate analyse` first runs `edited-versions` (`analyse.edited`). It links every Google
+item flagged `edited` (localised and cut suffixes included) to its original in the same folder.
+The rule is the sidecar matcher's `original_of`: same stem and `(N)`, exact extension first.
+Album copies resolve to their one item.
+
+- **Storage:** each link is an `edit-pair` group (catalogue v8 rebuilds `groups` to allow the
+  new kind; migrations run with foreign keys off, then checked). Members are `original`
+  (rank 0) and `edited` (rank 1). Details hold the `policy` and `keep`.
+- **Policies** (`--edited-policy`):
+  - `pair`, the default: keep both;
+  - `original-only`;
+  - `edited-only`.
+  Switching the policy updates every group. The importer reads `keep`.
+- **Orphans:** an edit without its original is flagged `unpaired-edit`. Originals get `has-edit`.
+- **Dedupe:** edits never take part, so an edit is never proposed as a duplicate of its original.
+- **On the real sample:** 1,562 edit pairs and no orphans. Photo dedupe found 256 groups in that
+  one shared album, 200 of them `IMG_1234.JPG` + its re-upload `IMG_1234_2.jpg`. The members are
+  visually identical (256-bit distance 0–3) and share the EXIF second.
+
 ## Video dedupe (M2-03)
 
 `photomigrate analyse` also runs `dedupe-videos` (`analyse.dedupe_video`).

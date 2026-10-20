@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M2-03] CLA-81 (video dedupe).
-- Next issue: [M2-04] CLA-82 (edited versions handling).
+- Last completed issue: [M2-04] CLA-82 (edited versions). Milestone 2's code is complete.
+- Next issue: [M3-01] CLA-83 (quality scoring).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
@@ -15,6 +15,19 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M2-04 and a real-sample analysis
+- `analyse.edited` (`edit-pair` groups, `--edited-policy`); catalogue v8 (`groups` rebuilt;
+  migrations run with foreign keys off, then verified).
+- Real sample (/tmp only):
+  - ingest of the whole album took 80 s with all the hashing;
+  - 1,562 edit pairs, no orphans;
+  - 256 photo duplicate groups, mostly `IMG_1234.JPG` + `IMG_1234_2.jpg` re-uploads, which are
+    true duplicates;
+  - no video duplicates.
+- The review gallery (M3-06) must show edit pairs side by side, with a bulk policy switch
+  (commented on CLA-88).
+- Tests: 662, 100%.
+
 ### 2026-10-20: session 1 (continued): M2-03
 - Video signatures (`hashing.video_signature`, 8 sampled frames) and bitrate at ingest and index
   (catalogue v7). `analyse.dedupe_video` plus `analyse.grouping` (shared by both dedupe stages,
