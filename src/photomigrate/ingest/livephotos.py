@@ -16,12 +16,15 @@ review. Other short clips are just videos.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Literal, cast
 
+from photomigrate.catalogue import Catalogue, CatalogueItem, DateSource
 from photomigrate.dates import moment_gap
+from photomigrate.runner import Action, JSONValue
 
 MAX_MOTION_SECONDS = 3.5
 SAME_SHOT = timedelta(seconds=3)
@@ -108,3 +111,60 @@ def pair_live_photos(stills: list[Candidate], motions: list[Candidate]) -> Pairi
         m.key for m in short if m.key not in paired and (m.content_id or _name(m.key) in by_name)
     )
     return Pairing(tuple(sorted(pairs, key=lambda p: p.still)), unpaired)
+
+
+STILL_EXTENSIONS = frozenset({".heic", ".heif", ".jpg", ".jpeg"})
+MOTION_EXTENSIONS = frozenset({".mov", ".mp4"})
+
+
+def _capture_time(
+    catalogue: Catalogue, item: CatalogueItem, embedded: DateSource
+) -> datetime | None:
+    found = catalogue.date_candidates(cast(int, item.id))
+    return found.get(embedded) or found.get("sidecar-taken")
+
+
+class LivePhotoStage:
+    """Pair catalogued Google stills and motion clips into ``live-pair`` groups."""
+
+    name = "live-photos"
+
+    def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        stills, motions = [], []
+        for item in catalogue.items("google"):
+            suffix = PurePosixPath(item.source_key).suffix.lower()
+            if item.kind == "photo" and suffix in STILL_EXTENSIONS:
+                if not {"edited", "google-creation"} & item.flags:
+                    time = _capture_time(catalogue, item, "exif")
+                    stills.append(Candidate(item.source_key, time, item.content_id, None))
+            elif item.kind == "video" and suffix in MOTION_EXTENSIONS:
+                time = _capture_time(catalogue, item, "quicktime")
+                motions.append(Candidate(item.source_key, time, item.content_id, item.duration))
+        result = pair_live_photos(stills, motions)
+        for pair in result.pairs:
+            details: dict[str, JSONValue] = {
+                "motion": pair.motion,
+                "method": pair.method,
+                "delta": pair.delta,
+            }
+            yield Action("pair-live", pair.still, details)
+        for key in result.unpaired:
+            yield Action("flag-unpaired-motion", key)
+
+    def apply(self, action: Action, catalogue: Catalogue) -> None:
+        if action.kind == "flag-unpaired-motion":
+            catalogue.add_flags(self._id(catalogue, action.target), {"unpaired-motion"})
+            return
+        still = self._id(catalogue, action.target)
+        motion = self._id(catalogue, str(action.details["motion"]))
+        group = catalogue.upsert_group("live-pair", action.target, dict(action.details))
+        catalogue.set_group_members(group, [(still, "still", 0), (motion, "motion", 1)])
+        catalogue.add_flags(still, {"live-photo-still"})
+        catalogue.add_flags(motion, {"live-photo-motion"})
+
+    @staticmethod
+    def _id(catalogue: Catalogue, key: str) -> int:
+        found = catalogue.item_for_key("google", key)
+        if found is None:
+            raise KeyError(f"{key} is not in the catalogue; run ingest first")
+        return found

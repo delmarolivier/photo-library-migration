@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from photomigrate import __version__
+from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.ingest.takeout import TakeoutError
@@ -89,18 +90,21 @@ def ingest(
         bool, typer.Option("--apply", help="Catalogue the items (else a dry run).")
     ] = False,
 ) -> None:
-    """Catalogue every Google Photos item straight from the Takeout zips (read-only)."""
+    """Catalogue every Google Photos item straight from the Takeout zips (read-only),
+    then pair split Live Photos."""
     settings: Settings = ctx.obj
     zone = _zone(timezone)
+    console = Console()
     try:
         with IngestStage(takeout_dir, work_dir, zone=zone) as stage:
-            result = run_stage(
-                stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
-            )
+            for step in (stage, LivePhotoStage()):
+                result = run_stage(
+                    step, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
+                )
+                render_result(result, console)
     except (TakeoutError, StageFailedError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    render_result(result, Console())
 
 
 _STAGES = {

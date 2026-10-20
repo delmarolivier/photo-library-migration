@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from photomigrate.catalogue import Catalogue
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.stage import IngestStage
-from photomigrate.runner import RunResult, run_stage
+from photomigrate.runner import Action, RunResult, run_stage
 from photomigrate.testing.takeout import TakeoutBuilder, TakeoutManifest
 
 ROOT = "Takeout/Google Photos"
@@ -106,3 +108,13 @@ def test_pairing_again_changes_nothing(
 
     assert again.applied == 0
     assert (tmp_path / "catalogue.sqlite").read_bytes() == before
+
+
+def test_pairing_items_that_are_not_catalogued_is_an_error(tmp_path: Path) -> None:
+    action = Action("pair-live", "nope.HEIC", {"motion": "nope.MOV"})
+
+    with (
+        Catalogue.snapshot(tmp_path / "none.sqlite") as catalogue,
+        pytest.raises(KeyError, match="run ingest first"),
+    ):
+        LivePhotoStage().apply(action, catalogue)
