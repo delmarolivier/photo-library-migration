@@ -2,17 +2,29 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M1-04] CLA-76 (Takeout ingest, read straight from the zips)
-- Next issue: [M1-05] CLA-77 (albums, favourites, captions, people keywords)
+- Last completed issue: [M1-05] CLA-77 (albums, copies, favourites, captions, people keywords)
+- Next issue: [M1-06] CLA-78 (Live Photo pairing)
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
     download the 12 Takeout parts onto it before the Google links expire.
-  - OK to install uv, exiftool and ffmpeg on the Air and clone the repo there?
-  - The first real run: the dry-run smoke test of `ingest` on the `data-in/` sample, and later
-    the 600 GB export. Needs Delmar's go-ahead (CLAUDE.md rule 10).
 
 ## Session log
+### 2026-10-20: session 1 (continued): real-sample checks and M1-05
+- Real-sample smoke test (approved by Delmar). It ran on this work Mac from `data-in/` into
+  /tmp only; the zips were unchanged.
+  - Matching: 3,307 of 3,308 matched. The one leftover pair is genuine: a video without a
+    sidecar, and a sidecar whose video isn't in the export.
+  - Apply took 21 s. There are 21 date conflicts and 171 sidecar-date fills, and no EXIF offsets
+    at all (posted on CLA-85).
+  - With M1-05: 1 shared album with 3,308 memberships and 16 distinct `People/` keywords.
+- The Air is set up (`~/Code/photo-library-migration`, exiftool 13.55, ffmpeg 9, uv) and all
+  tests pass there.
+- M1-05: catalogue v3 adds albums, members, item_copies, keywords and google_url. Ingest
+  resolves album copies into one item, and adds memberships, favourites, captions and People
+  keywords.
+- Tests: 472, 100%.
+
 ### 2026-10-20: session 1 (continued): M1-04 and a new plan
 - Facts that changed the plan:
   - The Google export is **~600 GB** (12 × 50 GB parts), not 30–40 GB.

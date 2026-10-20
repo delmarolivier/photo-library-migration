@@ -38,6 +38,22 @@ is about 600 GB (12 × 50 GB) on the MacBook Air's external drive.
   (match method, edited, google-creation, policy flags) and its **metadata plan** (catalogue v2
   column `metadata_plan`). Working copies are written at import time (M4-01) for approved items.
 
+### Albums, copies, favourites, captions, people (M1-05)
+
+- **An album is a folder with a `metadata.json`** (the name is localised). That rule doesn't
+  depend on the export language. Year folders have no such file. A broken `metadata.json`
+  falls back to the folder name.
+- **Plain folders are ingested first.** So an item's main record is its `Photos from YYYY` file
+  when one exists. Items that live only in albums, like Delmar's shared album, still get one.
+- **A later file with the same SHA-256 and the same Google Photos URL** (from its sidecar) is the
+  *same item*. It's stored in `item_copies`, and its folder adds an `album_members` row. Same
+  bytes but a different URL means a separate Google item, flagged
+  `same-bytes-as-another-item`. `catalogue.item_for_key()` maps any Takeout path to its one item,
+  which is the basis for reconciliation (M4-03).
+- **Favourites and captions** are on `items` (`favorite`, `description`). Face-tag names become
+  `People/<name>` keywords (`keywords` table, replaced as a set per prefix). Catalogue v3 adds
+  `albums`, `album_members`, `item_copies`, `keywords` and `items.google_url`.
+
 ## Catalogue and stage runner (M1-03)
 
 ### Catalogue (`photomigrate.catalogue`)
