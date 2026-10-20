@@ -2,6 +2,42 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Ingest (M1-04)
+
+`photomigrate ingest <takeout-dir> [--apply]` catalogues every Google Photos item **straight
+from the zip parts**: no extraction, and nothing is ever written to the zips. The real export
+is about 600 GB (12 × 50 GB) on the MacBook Air's external drive.
+
+- `ingest.takeout`: lists the parts, or an already unzipped `Takeout/` tree. Only
+  `Takeout/Google Photos/` is used; other files are counted and ignored. It rejects unsafe
+  member paths (zip slip) and parts that disagree about the same file. `local_copy()` streams
+  one entry into a scratch file and hashes it on the way. The original's location is
+  `<part>::<member>`, relative to the Takeout folder, so the catalogue can move between
+  machines.
+- `ingest.names` and `ingest.sidecars`: parse names (`(N)` index, edit suffixes including ones
+  cut by the 47-character limit, dates in names) and match media to sidecars folder by folder.
+  Every candidate pair gets a score: exact 3, cut-but-a-prefix 2, legacy without the media
+  extension 1. Pairs are assigned best first, each sidecar to one original at most. Edited
+  copies take their original's sidecar: the original with the same stem and index, preferring
+  the exact extension, then the same extension ignoring case. Two originals that differ only in
+  extension case, plus an edit with its case flipped, cannot be told apart, and the matcher then
+  picks the exact-extension one. Every media file gets a `Match`. Unclaimed sidecars become
+  orphans.
+- `ingest.exif`: a typed PyExifTool wrapper. Every path is announced to the safety guard first.
+  `write()` always creates a *new* file (`-o`). Photos get EXIF `DateTimeOriginal` and
+  `OffsetTimeOriginal`, GPS, and `XMP-dc:Description`. GIFs get the XMP equivalents. Videos get
+  `QuickTime:CreateDate` and `Keys:CreationDate`, `Keys:GPSCoordinates` and `Keys:Description`.
+- `ingest.policy`: the file's own date wins. A plausible sidecar date fills a gap, written in the
+  home time zone (`--timezone`, by default the Mac's) and flagged `offset-assumed`. Placeholder
+  dates, dates after the upload, and the upload time used as a capture date are never written,
+  only flagged. Disagreements become `date-conflict`. GPS and caption come from the sidecar when
+  missing or different. Every date candidate is recorded (exif or quicktime, sidecar-taken,
+  sidecar-created, filename, mtime).
+- `ingest.stage`: one `ingest` action per media file, plus `flag-orphan-sidecar` and
+  `flag-unknown-file`. Apply hashes the item, reads its metadata, and stores the item, its flags
+  (match method, edited, google-creation, policy flags) and its **metadata plan** (catalogue v2
+  column `metadata_plan`). Working copies are written at import time (M4-01) for approved items.
+
 ## Catalogue and stage runner (M1-03)
 
 ### Catalogue (`photomigrate.catalogue`)

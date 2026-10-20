@@ -2,20 +2,46 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M1-03] CLA-75 (catalogue, stage runner, dry-run)
-- Next issue: [M1-04] CLA-76 (Takeout ingest: unzip, sidecar matching, metadata writeback)
+- Last completed issue: [M1-04] CLA-76 (Takeout ingest, read straight from the zips)
+- Next issue: [M1-05] CLA-77 (albums, favourites, captions, people keywords)
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
-  - Which personal Mac will do the real run? Development happens on the work MacBook (fixtures
-    only, no personal media). M2-01 real indexing and the M4 import need a Mac signed into
-    Delmar's Apple ID with "Download Originals" on and roughly 150 GB free.
-  - How should the real Takeout samples in `data-in/` be used? (Added by Delmar 2026-10-20:
-    3 zips, 3.7 GB, gitignored and blocked by the media guard.) Proposed: as a reference for
-    the M1-02 fixture generator now; an opt-in, local-only dry-run smoke test after M1-04.
-  - If that Mac is short on disk: S3 in a *personal* AWS account as temporary storage for the
-    Takeout zips (the project's stated fallback). Not needed for M1.
+  - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
+    download the 12 Takeout parts onto it before the Google links expire.
+  - OK to install uv, exiftool and ffmpeg on the Air and clone the repo there?
+  - The first real run: the dry-run smoke test of `ingest` on the `data-in/` sample, and later
+    the 600 GB export. Needs Delmar's go-ahead (CLAUDE.md rule 10).
 
 ## Session log
+### 2026-10-20: session 1 (continued): M1-04 and a new plan
+- Facts that changed the plan:
+  - The Google export is **~600 GB** (12 × 50 GB parts), not 30–40 GB.
+  - The run host is Delmar's home **MacBook Air** (`ssh openclaw`; macOS 27, 16 GB, about
+    40 GB free internally) with an external APFS drive.
+  - EC2/S3 was dropped: the only AWS profile is an Amazon Isengard account, and personal photos
+    don't belong there.
+  - Delmar keeps the existing export.
+- What changed:
+  - Ingest reads straight from the zips (`ingest.takeout`, `names`, `sidecars`, `exif`,
+    `policy`, `stage`). The CLI has `ingest` plus the global `--catalogue` / `--plan-dir`.
+    Catalogue v2 adds `metadata_plan`.
+  - The safety guard forbids `data-in/` and judges relative names by the cwd only.
+  - The Timeline export (`data-in/Timeline.json`, iOS format, 2025–2026 only) is surveyed;
+    see the comment on CLA-87.
+- Tests added / coverage: 448 tests, 100%. The Hypothesis property tests also passed at
+  5,000 examples (`HYPOTHESIS_PROFILE=stress`).
+- Decisions made:
+  - Working copies are written at import (M4-01), not at ingest. Catalogue paths are relative
+    (`<part>::<member>`).
+  - A sidecar date goes into the home time zone with an `offset-assumed` flag.
+    GPS-based time zones are a possible later improvement.
+  - Altitude is written only together with latitude and longitude.
+- Handoff notes for next session:
+  - M1-05 adds album memberships, favourites, captions and people keywords; the people names
+    are already in each ingest action's `sidecar_data`.
+  - The real-sample smoke test is a dry run of `photomigrate ingest data-in` with
+    `--catalogue` and `--plan-dir` under /tmp. Ask Delmar before running it.
+
 ### 2026-10-20: session 1 (continued): M1-03
 - Issues worked: CLA-75 [M1-03].
 - What changed: `photomigrate.catalogue` (schema v1, migrations, idempotent item and
