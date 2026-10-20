@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
+
+from photomigrate.testing.media import utc
 
 SidecarStyle = Literal["supplemental", "legacy"]
 Locale = Literal["en_GB", "en_US"]
@@ -95,26 +97,20 @@ class Geo:
     altitude: float = 0.0
 
 
-def _utc(when: datetime) -> datetime:
-    if when.tzinfo is None:
-        raise ValueError(f"fixture datetimes need a timezone: {when!r}")
-    return when.astimezone(UTC)
-
-
 def format_timestamp(when: datetime, locale: Locale = "en_GB") -> str:
     """The ``formatted`` twin of a sidecar timestamp, in the account's locale."""
-    utc = _utc(when)
-    month = _MONTHS[locale][utc.month - 1]
+    moment = utc(when)
+    month = _MONTHS[locale][moment.month - 1]
     if locale == "en_GB":
-        return f"{utc.day} {month} {utc.year}, {utc:%H:%M:%S} UTC"
-    hour = utc.hour % 12 or 12
-    meridiem = "AM" if utc.hour < 12 else "PM"
-    return f"{month} {utc.day}, {utc.year}, {hour}:{utc:%M:%S} {meridiem} UTC"
+        return f"{moment.day} {month} {moment.year}, {moment:%H:%M:%S} UTC"
+    hour = moment.hour % 12 or 12
+    meridiem = "AM" if moment.hour < 12 else "PM"
+    return f"{month} {moment.day}, {moment.year}, {hour}:{moment:%M:%S} {meridiem} UTC"
 
 
 def _time(when: datetime, locale: Locale) -> dict[str, str]:
     return {
-        "timestamp": str(int(_utc(when).timestamp())),
+        "timestamp": str(int(utc(when).timestamp())),
         "formatted": format_timestamp(when, locale),
     }
 
