@@ -330,3 +330,11 @@ def test_a_copy_in_a_plain_folder_is_recorded_without_an_album(tmp_path: Path) -
         assert item.id is not None
         assert catalogue.copies_of(item.id) == [f"{ROOT}/Photos from 2020/IMG_1.JPG"]
         assert catalogue.albums() == []
+
+
+def test_live_photo_motion_clips_keep_their_content_identifier(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+    stored = items(tmp)
+
+    for item in manifest.with_quirk("live-photo-motion"):
+        assert stored[item.path].content_id == item.content_id
