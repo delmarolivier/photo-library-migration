@@ -173,7 +173,7 @@ def _between(before: Dated, after: Dated, current: Dated) -> datetime:
     low, high = _wall(before.taken or datetime.min), _wall(after.taken or datetime.min)
     start, at, end = (_order(i)[0] for i in (before, current, after))
     share = (at - start) / (end - start) if end != start else 0.5
-    return low + (high - low) * share
+    return (low + (high - low) * share).replace(microsecond=0)
 
 
 def suggestions(

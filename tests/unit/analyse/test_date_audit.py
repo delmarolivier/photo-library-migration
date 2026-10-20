@@ -308,3 +308,14 @@ def test_a_batch_without_a_consistent_gap_suggests_no_offset() -> None:
     (batch,) = batches([a], audit([a], NOW), {a.id: datetime(2019, 1, 1)})
 
     assert batch.offset is None
+
+
+def test_suggestions_are_whole_seconds() -> None:
+    first = item("IMG_0001.JPG", taken=datetime(2019, 7, 1, 12, 0, 0))
+    gap = [item(f"IMG_{n:04d}.JPG", taken=None) for n in (2, 3)]
+    last = item("IMG_0004.JPG", taken=datetime(2019, 7, 1, 12, 0, 1))
+    shots = [first, *gap, last]
+
+    found = suggestions(shots, audit(shots, NOW))
+
+    assert [found[s.id] for s in gap] == [datetime(2019, 7, 1, 12, 0, 0)] * 2
