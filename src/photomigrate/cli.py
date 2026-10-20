@@ -30,7 +30,9 @@ def main(
 _STAGES = {
     "ingest": "Unzip Takeout, match sidecars, write metadata to working copies.",
     "index": "Read-only index of the iCloud library.",
-    "analyse": "Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location.",
+    "analyse": (
+        "Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location."
+    ),
     "review": "Local review gallery; decisions are stored in the catalogue.",
     "import": "Import approved items into Photos (dry-run unless --apply).",
     "report": "Reconciliation report: every Google item accounted for.",

@@ -70,7 +70,9 @@ def test_forbidden_root_wins_over_allowed_root() -> None:
     assert not rules.is_forbidden(SCRATCH / "fixture" / "IMG_0001.jpg")
 
 
-def test_relative_paths_resolve_against_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_relative_paths_resolve_against_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     work = tmp_path / "work"
     work.mkdir()
     monkeypatch.chdir(work)
@@ -114,7 +116,9 @@ def test_for_current_user_forbids_both_real_and_env_home_pictures(
     assert rules.allowed_roots == (SCRATCH,)
 
 
-_plain_names = st.text(alphabet=string.ascii_letters + string.digits + " _-", min_size=1, max_size=12)
+_plain_names = st.text(
+    alphabet=string.ascii_letters + string.digits + " _-", min_size=1, max_size=12
+)
 _plain_segments = st.lists(
     _plain_names.filter(lambda s: s.strip(" ") == s and s.casefold() != "takeout"),
     min_size=1,

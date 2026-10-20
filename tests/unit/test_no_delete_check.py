@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import photomigrate
-from photomigrate.safety import find_delete_calls, main, scan_paths
+from photomigrate.safety import find_forbidden_calls, main, scan_paths
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ from photomigrate.safety import find_delete_calls, main, scan_paths
     ],
 )
 def test_delete_apis_are_flagged(source: str) -> None:
-    findings = find_delete_calls(source, "mod.py")
+    findings = find_forbidden_calls(source, "mod.py")
 
     assert len(findings) == 1
     assert findings[0].path == "mod.py"
@@ -53,13 +53,15 @@ def test_delete_apis_are_flagged(source: str) -> None:
     ],
 )
 def test_harmless_code_is_not_flagged(source: str) -> None:
-    assert find_delete_calls(source) == []
+    assert find_forbidden_calls(source) == []
 
 
 def test_finding_message_names_location_and_rule() -> None:
-    (finding,) = find_delete_calls("x = 1\nshutil.rmtree(d)\n", "src/mod.py")
+    (finding,) = find_forbidden_calls("x = 1\nshutil.rmtree(d)\n", "src/mod.py")
 
-    assert str(finding) == "src/mod.py:2: delete API 'shutil.rmtree' is forbidden (CLAUDE.md rule 3)"
+    assert (
+        str(finding) == "src/mod.py:2: delete API 'shutil.rmtree' is forbidden (CLAUDE.md rule 3)"
+    )
 
 
 def test_scan_paths_walks_directories_and_files(tmp_path: Path) -> None:
@@ -79,7 +81,9 @@ def test_production_package_has_no_delete_calls() -> None:
     assert scan_paths([Path(photomigrate.__file__).parent]) == []
 
 
-def test_main_fails_and_reports_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_fails_and_reports_findings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (tmp_path / "bad.py").write_text("import shutil\nshutil.rmtree('x')\n")
 
     assert main([str(tmp_path)]) == 1
