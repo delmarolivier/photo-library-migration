@@ -266,3 +266,16 @@ def test_closing_twice_is_harmless() -> None:
     with tool:
         pass
     tool.close()
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"QuickTime:CreateDate": "1904:01:01 00:00:00Z"},
+        {"QuickTime:CreateDate": "1904:01:01 00:00:00"},
+        {"Keys:CreationDate": "1904:01:01 01:00:00+01:00"},
+    ],
+)
+def test_the_quicktime_epoch_means_no_date(tags: dict[str, str]) -> None:
+    # Older exiftool versions (Ubuntu's) report an unset QuickTime date as its 1904 epoch.
+    assert embedded_from_tags(tags).taken is None
