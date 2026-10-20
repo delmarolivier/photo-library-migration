@@ -112,3 +112,10 @@ def signature_distance(a: Sequence[str], b: Sequence[str]) -> float:
     if not pairs:
         return 64.0
     return sum(hamming(x, y) for x, y in pairs) / len(pairs)
+
+
+def bitrate(size: int | None, duration: float | None) -> int | None:
+    """Average bits per second, from the file size and duration."""
+    if not size or not duration or duration <= 0:
+        return None
+    return int(size * 8 / duration)

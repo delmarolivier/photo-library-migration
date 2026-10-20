@@ -24,7 +24,7 @@ from types import TracebackType
 from typing import Any, Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem, Kind
-from photomigrate.hashing import image_hashes, sha256_file
+from photomigrate.hashing import bitrate, image_hashes, sha256_file, video_signature
 from photomigrate.ingest.exif import Embedded, ExifTool
 from photomigrate.runner import Action, JSONValue
 from photomigrate.safety import ReadOnlyGuard
@@ -145,6 +145,8 @@ class IndexStage:
         kind = cast(Kind, details["kind"])
         flags = {str(flag) for flag in cast(list[str], details["flags"])}
         sha256 = phash = dhash = fine = None
+        signature: list[str] | None = None
+        rate: int | None = None
         embedded = Embedded()
         if details["original"]:
             original = self.library / str(details["original"])
@@ -155,6 +157,9 @@ class IndexStage:
             if self._exiftool is None:
                 self._exiftool = ExifTool()
             embedded = self._exiftool.read(original)
+            if kind == "video":
+                signature = video_signature(original, embedded.duration)
+                rate = bitrate(original.stat().st_size, embedded.duration)
         else:
             flags.add("original-missing")
         item_id = catalogue.upsert_item(
@@ -170,6 +175,8 @@ class IndexStage:
                 width=cast(int | None, details["width"]) or embedded.width,
                 height=cast(int | None, details["height"]) or embedded.height,
                 duration=embedded.duration,
+                video_signature=",".join(signature) if signature else None,
+                bitrate=rate,
                 latitude=cast(float | None, details["latitude"]),
                 longitude=cast(float | None, details["longitude"]),
                 title=cast(str | None, details["filename"]),

@@ -199,3 +199,12 @@ def test_no_ffmpeg_means_no_signature(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(hashing.shutil, "which", lambda _name: None)
 
     assert video_signature(path, duration=1.0) is None
+
+
+def test_bitrate_from_size_and_duration() -> None:
+    from photomigrate.hashing import bitrate
+
+    assert bitrate(1_000_000, 2.0) == 4_000_000
+    assert bitrate(None, 2.0) is None
+    assert bitrate(1000, None) is None
+    assert bitrate(1000, 0) is None

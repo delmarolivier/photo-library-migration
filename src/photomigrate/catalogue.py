@@ -185,6 +185,12 @@ SCHEMA_V6 = """
 ALTER TABLE items ADD COLUMN phash_fine TEXT;
 """
 
+SCHEMA_V7 = """
+-- Videos: pHashes of 8 evenly sampled frames (comma-separated) and the bitrate (bits/s).
+ALTER TABLE items ADD COLUMN video_signature TEXT;
+ALTER TABLE items ADD COLUMN bitrate INTEGER;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -192,6 +198,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(4, "content identifiers", SCHEMA_V4),
     Migration(5, "scores and time zones", SCHEMA_V5),
     Migration(6, "fine perceptual hashes", SCHEMA_V6),
+    Migration(7, "video signatures and bitrates", SCHEMA_V7),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair"]
@@ -263,6 +270,8 @@ class CatalogueItem:
     content_id: str | None = None
     scores: str = "{}"
     timezone: str | None = None
+    video_signature: str | None = None
+    bitrate: int | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:

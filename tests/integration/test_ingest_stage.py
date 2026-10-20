@@ -354,14 +354,12 @@ def test_google_photos_get_perceptual_hashes(applied) -> None:  # type: ignore[n
 
 
 def test_google_videos_get_a_signature_and_a_bitrate(applied) -> None:  # type: ignore[no-untyped-def]
-    manifest, tmp, _, _ = applied
+    _, tmp, _, _ = applied
     stored = items(tmp)
 
     clip = stored[f"{ROOT}/Photos from 2019/VID_20190704_101010.mp4"]
     assert clip.video_signature is not None
     assert len(clip.video_signature.split(",")) == 8
-    size = next(e for e in manifest.files if e == clip.source_key)
     assert clip.bitrate is not None
     assert clip.bitrate > 0
     assert stored[f"{ROOT}/Photos from 2019/IMG_1001.JPG"].video_signature is None
-    _ = size
