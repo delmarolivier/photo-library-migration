@@ -25,3 +25,25 @@ def main(
     ] = False,
 ) -> None:
     """Merge Google Photos into iCloud Photos. Never deletes anything."""
+
+
+_STAGES = {
+    "ingest": "Unzip Takeout, match sidecars, write metadata to working copies.",
+    "index": "Read-only index of the iCloud library.",
+    "analyse": "Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location.",
+    "review": "Local review gallery; decisions are stored in the catalogue.",
+    "import": "Import approved items into Photos (dry-run unless --apply).",
+    "report": "Reconciliation report: every Google item accounted for.",
+}
+
+
+def _register_stub(stage: str, help_text: str) -> None:
+    def stub() -> None:
+        typer.echo(f"'{stage}' is not implemented yet (see Linear P-CLA-3).", err=True)
+        raise typer.Exit(code=1)
+
+    app.command(stage, help=help_text)(stub)
+
+
+for _stage, _help in _STAGES.items():
+    _register_stub(_stage, _help)
