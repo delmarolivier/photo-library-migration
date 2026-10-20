@@ -76,8 +76,9 @@ class BestShotWeights:
 class BestShotConfig:
     window_seconds: float = 120.0
     """Shots in one group are all taken within this long of the group's first."""
-    min_similarity: float = 0.9
-    """Cosine similarity of open_clip image embeddings, from -1 to 1."""
+    min_similarity: float = 0.94
+    """Cosine similarity of open_clip image embeddings, from -1 to 1. On the real sample, most
+    pairs above 0.94 share their framing; below 0.92, most are other compositions."""
     weights: BestShotWeights = field(default_factory=BestShotWeights)
 
     def __post_init__(self) -> None:

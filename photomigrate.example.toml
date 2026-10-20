@@ -38,8 +38,9 @@ tiny_below_short_side = 240
 # Every shot in a group is taken within this many seconds of the group's first shot,
 window_seconds = 120.0
 # and is at least this similar to another shot in it (cosine similarity of open_clip image
-# embeddings, from -1 to 1).
-min_similarity = 0.9
+# embeddings, from -1 to 1). On the real sample most pairs above 0.94 share their framing;
+# lower values also group other compositions of the same event.
+min_similarity = 0.94
 
 [best_shot.weights]
 # Only the ratios matter. A score that some shot in a group lacks (no faces measured, no

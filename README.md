@@ -4,7 +4,7 @@ Merge Google Photos into iCloud Photos as one library: dedupe photos and videos,
 low-quality shots, review every decision in a local gallery, then import. **The tool never
 deletes anything**: removals go into a "To Delete" album that you clear by hand.
 
-Status: milestone 2. `ingest` and `index` work; the other stages are stubs.
+Status: milestone 3. `ingest`, `index` and `analyse` work; the other stages are stubs.
 Plan and task queue: Linear project "Photo Library Migration" (P-CLA-3, ClawWorks).
 
 ## Requirements
@@ -28,6 +28,10 @@ uv run photomigrate ingest /Volumes/Photos/takeout
 uv run photomigrate ingest /Volumes/Photos/takeout --apply --timezone Europe/London
 ```
 
+`ingest` and `index` also embed every photo with open_clip (for best-shot). The model's
+weights (about 600 MB) are downloaded into the Hugging Face cache the first time; on Apple
+silicon it runs on the GPU. On macOS they also read faces with Apple Vision.
+
 ```sh
 # Read-only index of the iCloud Photos library (macOS; quit Photos first)
 uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary"
@@ -35,7 +39,8 @@ uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary" --apply
 ```
 
 ```sh
-# Link edits, propose duplicate groups, flag quality problems (dry run, then --apply)
+# Link edits, propose duplicate groups, flag quality problems, pick best shots
+# (dry run, then --apply)
 uv run photomigrate analyse
 uv run photomigrate --config photomigrate.toml analyse --apply
 ```
@@ -47,9 +52,9 @@ with their defaults. Unknown settings are errors.
 
 | Stage | What it does |
 |---|---|
-| `ingest` | Catalogue every item straight from the zips: match sidecars, hash, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
-| `index` | Read-only index of the iCloud library: hashes, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
-| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); later best-shot, dates, clutter, location |
+| `ingest` | Catalogue every item straight from the zips: match sidecars, hash, measure quality, embed photos, read faces, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
+| `index` | Read-only index of the iCloud library: hashes, quality, embeddings, faces, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
+| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); later dates, clutter, location |
 | `review` | Local gallery on 127.0.0.1; decisions stored in the catalogue |
 | `import` | Dry-run by default; `--apply` imports approved items and stages removals |
 | `report` | Reconciliation report: every Google item accounted for |

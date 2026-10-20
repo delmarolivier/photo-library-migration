@@ -170,7 +170,7 @@ def rank(shots: Sequence[Shot], weights: BestShotWeights) -> Ranking:
     ranked = []
     for current in shots:
         parts = {name: round(available[name](current), 4) for name in used}
-        score = sum(getattr(weights, name) * parts[name] for name in used) / total if used else 0
+        score = sum(getattr(weights, name) * parts[name] for name in used) / total if used else 0.0
         ranked.append(RankedShot(current, round(score, 4), parts))
     ranked.sort(key=lambda r: (-r.score, -r.shot.pixels, r.shot.source != "icloud", r.shot.key))
     return Ranking(ranked, used)
