@@ -9,9 +9,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from photomigrate.ingest.stage import IngestStage
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
+from photomigrate.ingest.stage import IngestStage
 from photomigrate.runner import RunResult, run_stage
 from photomigrate.testing.takeout import TakeoutBuilder, TakeoutManifest, standard_takeout
 
@@ -128,10 +128,10 @@ def test_metadata_plans_follow_the_rules(applied) -> None:  # type: ignore[no-un
     assert beach["taken"] is None
     assert beach["latitude"] is None
     assert beach["description"] == "Plage à Nice 🏖️"
-    # No EXIF date: the sidecar date is written in the home zone.
-    shot = f"{root}/Photos from 2019/Screenshot_20191105-123456_LongName_ABCD.jpg"
-    assert plan_of(tmp, shot)["taken"] == "2019-11-05T11:00:00+01:00"
-    assert {"date-from-sidecar", "offset-assumed"} <= stored[shot].flags
+    # No EXIF date (a stripped messaging forward): the sidecar date, in the home zone.
+    forward = f"{root}/Photos from 2019/IMG-20190702-WA0003.jpg"
+    assert plan_of(tmp, forward)["taken"] == "2019-07-02T08:00:00+02:00"
+    assert {"date-from-sidecar", "offset-assumed"} <= stored[forward].flags
     # GPS only in the sidecar.
     tower = plan_of(tmp, f"{root}/Photos from 2019/IMG_1003.HEIC")
     assert tower["latitude"] == pytest.approx(35.6585805)
@@ -203,3 +203,8 @@ def test_an_extracted_tree_is_ingested_in_place(tmp_path: Path) -> None:
     row = items(tmp_path)["Takeout/Google Photos/Photos from 2019/IMG_1001.JPG"]
     assert row.original_path == "Takeout/Google Photos/Photos from 2019/IMG_1001.JPG"
     assert "match-exact" in row.flags
+
+
+def test_a_stage_that_was_never_used_closes_cleanly(tmp_path: Path) -> None:
+    with IngestStage(tmp_path / "nowhere", tmp_path / "work", zone=ZONE):
+        pass
