@@ -15,6 +15,16 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): dedupe precision from a pixel check
+- Delmar asked for a real image comparison (and not to trust filenames). Every proposed pair
+  on the sample was decoded and compared by pixels.
+  - The first rules gave 17 false positives out of 287.
+  - The fixes: exact EXIF second; star groups around the keeper; a stricter 256-bit threshold
+    when a time is missing.
+  - Now 276 of 276 are confirmed the same image. Recall: 2 borderline possible misses out of
+    2,258 similar ungrouped pairs.
+- Tests: 665, 100%.
+
 ### 2026-10-20: session 1 (continued): M2-04 and a real-sample analysis
 - `analyse.edited` (`edit-pair` groups, `--edited-policy`); catalogue v8 (`groups` rebuilt;
   migrations run with foreign keys off, then verified).

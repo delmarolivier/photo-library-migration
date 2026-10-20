@@ -60,16 +60,33 @@ Rules, all configurable (`DedupeConfig`, CLI flags):
   `near` match. A near match needs:
   - 64-bit pHash ≤ 8 (candidate search: numpy brute force with `bitwise_count`, about 50 s per
     200k photos);
-  - then 256-bit pHash ≤ 12 and dHash ≤ 10;
+  - then 256-bit pHash ≤ 12, or ≤ 6 when either photo lacks an EXIF time (`fine_max_untimed`);
+  - dHash ≤ 10;
   - aspect ratio within 2% (rotation ignored);
-  - if both files carry an EXIF time, the same moment within 1 s.
-- **Groups:** edges are merged into groups (union-find).
+  - if both carry an EXIF time, **the exact same second**. Mixed local-vs-UTC comparisons
+    allow a whole time-zone offset.
+- **Groups are stars around the keeper (`grouping.star_groups`):** every member must match the
+  keeper *directly*, so chains (A~B~C with A ≠ C) can't pull different pictures together.
+  `method` says how the members match the keeper.
 - **Keeper order:** resolution, then metadata (date, GPS, caption), then iCloud, then the key.
 - **Stored as proposals only:** `groups(kind='duplicate')` with member roles `keeper` /
-  `duplicate`, plus `motion` for the clip of a Live Photo still, so a pair is handled as a pair.
-  Groups that no longer hold are retired. No `decisions` are written; review (M3-06) confirms.
-- **Known limit:** burst frames taken within the same second have identical EXIF seconds. If
-  they're also near-identical visually, they may be proposed as duplicates.
+  `duplicate`, plus `motion` for the clip of a Live Photo still. Stale groups are retired. No
+  `decisions` are written; review (M3-06) confirms.
+
+**Validated on the real sample with pixels** (2026-10-20). Each proposed pair was decoded,
+orientation-corrected and compared by SSIM/PSNR; the measurement scripts live outside the repo.
+- **The first rules** (1 s tolerance, transitive groups): 270 of 287 pairs were the same image,
+  and 17 were different shots. 13 of those were 1 s apart, 3 were chained, and 1 lacked EXIF.
+- **Measurements behind the fixes:**
+  - all 244 true duplicate pairs with EXIF on both sides shared the exact second;
+  - true duplicates without EXIF were within 2 bits on the 256-bit hash;
+  - the different shot was 10 bits away.
+- **After the fixes:** 276 of 276 pairs are the same image (254 at full size, 22 smaller re-saves
+  with SSIM@128 ≥ 0.983).
+- **Recall:** of 2,258 loosely similar pairs left ungrouped, 2,256 are different pictures. The
+  other 2 share the EXIF second but are 14 bits apart: likely burst frames.
+- **Control:** each keeper against its nearest-in-time photo outside the group gave 256 of 257
+  "different".
 
 ## iCloud index (M2-01)
 
