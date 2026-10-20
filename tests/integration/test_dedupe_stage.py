@@ -79,8 +79,9 @@ def test_google_near_duplicates_and_icloud_copies_are_proposed_as_groups(
     found = proposals(catalogue_path)
     assert found[f"google:{BEACH}"] == [
         ("google", BEACH, "keeper"),
-        ("icloud", "UUID-BEACH", "duplicate"),
+        # Full size, and it kept the original's EXIF including GPS: richer than the bare copy.
         ("google", f"{ROOT}/Photos from 2019/received_1001.jpeg", "duplicate"),
+        ("icloud", "UUID-BEACH", "duplicate"),
         ("google", f"{ROOT}/Photos from 2019/IMG-20190702-WA0003.jpg", "duplicate"),
     ]
     assert found[f"google:{ROOT}/Photos from 2019/IMG_1003.HEIC"] == [
@@ -162,3 +163,39 @@ def test_items_without_hashes_are_left_out(catalogue_path: Path, tmp_path: Path)
     result = dedupe(catalogue_path, tmp_path)
 
     assert all("UUID-MISSING" not in str(a.details) for a in result.plan.actions)
+
+
+def test_a_proposal_for_items_that_are_gone_is_an_error(tmp_path: Path) -> None:
+    from photomigrate.runner import Action
+
+    action = Action(
+        "propose-duplicates",
+        "dup-x",
+        {"keeper": "x", "method": "near", "members": [["icloud", "UUID-GONE", "keeper"]]},
+    )
+    with (
+        Catalogue.snapshot(tmp_path / "none") as catalogue,
+        pytest.raises(KeyError, match="UUID-GONE"),
+    ):
+        DedupeStage().apply(action, catalogue)
+
+
+def test_discarding_a_group_that_does_not_exist_is_harmless(tmp_path: Path) -> None:
+    with Catalogue.snapshot(tmp_path / "none") as catalogue:
+        catalogue.discard_group("duplicate", "dup-nope")
+        assert catalogue.groups("duplicate") == []
+
+
+def test_analyse_reports_a_failing_run(
+    catalogue_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(self: DedupeStage, action: object, catalogue: object) -> None:
+        raise OSError("disk unplugged")
+
+    monkeypatch.setattr(DedupeStage, "apply", broken)
+    args = ["--catalogue", str(catalogue_path), "--plan-dir", str(tmp_path / "plans")]
+
+    result = CliRunner().invoke(app, [*args, "analyse", "--apply"])
+
+    assert result.exit_code == 1
+    assert "disk unplugged" in result.output

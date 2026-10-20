@@ -17,16 +17,19 @@ decided here; the user confirms in review.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import hashlib
+import json
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Literal, cast
 
 import numpy as np
 
-from photomigrate.catalogue import Source
+from photomigrate.catalogue import Catalogue, CatalogueItem, Source
 from photomigrate.dates import same_moment
 from photomigrate.hashing import hamming
+from photomigrate.runner import Action, JSONValue
 
 Method = Literal["exact", "content-id", "near", "mixed"]
 
@@ -178,3 +181,99 @@ def find_duplicates(records: Sequence[PhotoRecord], config: DedupeConfig) -> lis
         method = cast(Method, "mixed" if len(kinds) > 1 else next(iter(kinds)))
         result.append(DuplicateGroup(ordered[0].id, tuple(r.id for r in ordered), method))
     return sorted(result, key=lambda g: g.members)
+
+
+# --- the stage -----------------------------------------------------------------------------
+
+_LEFT_OUT = frozenset({"edited", "google-creation"})
+
+
+def _record(catalogue: Catalogue, item: CatalogueItem) -> PhotoRecord:
+    found = catalogue.date_candidates(cast(int, item.id))
+    planned = json.loads(item.metadata_plan).get("taken")
+    return PhotoRecord(
+        id=cast(int, item.id),
+        source=item.source,
+        key=item.source_key,
+        sha256=item.sha256,
+        phash=item.phash,
+        dhash=item.dhash,
+        fine=item.phash_fine,
+        width=item.width,
+        height=item.height,
+        taken=found.get("exif"),
+        content_id=item.content_id,
+        has_date=bool(found.get("exif") or found.get("icloud") or planned),
+        has_gps=item.latitude is not None,
+        has_caption=bool(item.description),
+    )
+
+
+def _group_key(members: Iterable[PhotoRecord]) -> str:
+    names = "|".join(sorted(f"{m.source}:{m.key}" for m in members))
+    return "dup-" + hashlib.sha256(names.encode()).hexdigest()[:16]
+
+
+class DedupeStage:
+    """Propose photo duplicate groups (``groups.kind = 'duplicate'``) with their keepers."""
+
+    name = "dedupe-photos"
+
+    def __init__(self, config: DedupeConfig | None = None) -> None:
+        self.config = config or DedupeConfig()
+
+    def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        records = [
+            _record(catalogue, item)
+            for item in catalogue.items()
+            if item.kind == "photo"
+            and (item.sha256 or item.phash)
+            and not (item.source == "google" and _LEFT_OUT & item.flags)
+        ]
+        by_id = {r.id: r for r in records}
+        motions = {
+            pair[0][0]: pair[1][0]
+            for group in catalogue.groups("live-pair")
+            if len(pair := catalogue.group_members(group.id)) == 2
+        }
+        wanted = set()
+        for group in find_duplicates(records, self.config):
+            members = [by_id[i] for i in group.members]
+            key = _group_key(members)
+            wanted.add(key)
+            listed: list[JSONValue] = []
+            for record in members:
+                role = "keeper" if record.id == group.keeper else "duplicate"
+                listed.append([record.source, record.key, role])
+                if record.id in motions:
+                    motion = catalogue.item(motions[record.id])
+                    listed.append([motion.source, motion.source_key, "motion"])
+            keeper = by_id[group.keeper]
+            yield Action(
+                "propose-duplicates",
+                key,
+                {
+                    "keeper": f"{keeper.source}:{keeper.key}",
+                    "method": group.method,
+                    "members": listed,
+                },
+            )
+        for stale in catalogue.groups("duplicate"):
+            if stale.key not in wanted:
+                yield Action("retire-duplicates", stale.key)
+
+    def apply(self, action: Action, catalogue: Catalogue) -> None:
+        if action.kind == "retire-duplicates":
+            catalogue.discard_group("duplicate", action.target)
+            return
+        details = action.details
+        group = catalogue.upsert_group(
+            "duplicate", action.target, {"keeper": details["keeper"], "method": details["method"]}
+        )
+        members = []
+        for rank, (source, key, role) in enumerate(cast(list[list[str]], details["members"])):
+            item_id = catalogue.item_for_key(cast(Source, source), key)
+            if item_id is None:
+                raise KeyError(f"{source}:{key} is no longer in the catalogue")
+            members.append((item_id, role, rank))
+        catalogue.set_group_members(group, members)

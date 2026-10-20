@@ -450,6 +450,15 @@ class Catalogue:
             ).fetchone()
         return int(returned["id"])
 
+    def discard_group(self, kind: GroupKind, key: str) -> None:
+        """Remove a proposal group and its member list (catalogue rows only, never media)."""
+        row = self._conn.execute(
+            "SELECT id FROM groups WHERE kind = ? AND key = ?", (kind, key)
+        ).fetchone()
+        if row is not None:
+            self._conn.execute("DELETE FROM group_members WHERE group_id = ?", (row["id"],))
+            self._conn.execute("DELETE FROM groups WHERE id = ?", (row["id"],))
+
     def groups(self, kind: GroupKind) -> list[Group]:
         rows = self._conn.execute("SELECT * FROM groups WHERE kind = ? ORDER BY id", (kind,))
         return [
