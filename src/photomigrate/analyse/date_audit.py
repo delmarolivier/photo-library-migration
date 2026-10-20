@@ -25,23 +25,32 @@ answer covers a whole run. A batch's key names the batch, not its members.
 between its sequence's nearest well-dated shots (by shot number), or the one on its side;
 else a plausible sidecar capture time. A doubtful batch whose members are all off from their
 suggestions by the same amount (to the minute) also suggests that **offset**: a wrong clock.
+
+**The stage** audits every item except Google edits, creations and Live Photo motion clips
+(they follow their original or still, or go to the clutter queue) and photos proposed as
+another's duplicate. Batches are ``date-batch`` groups: members in shot order, each with its
+reasons as its role; details hold the problem, camera, folder, prefix, each member's current
+date and suggestion, and the batch offset. The review answers each batch (``date-fixes``).
 """
 
 from __future__ import annotations
 
 import hashlib
 import itertools
+import json
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Literal
+from pathlib import PurePosixPath
+from typing import Literal, cast
 
-from photomigrate.catalogue import Source
+from photomigrate.catalogue import Catalogue, CatalogueItem, Source
 from photomigrate.dates import moment_gap
 from photomigrate.ingest.names import parse_media_name
 from photomigrate.ingest.policy import is_placeholder
+from photomigrate.runner import Action, JSONValue
 
 Reason = Literal[
     "missing", "placeholder", "future", "upload-as-taken", "conflict", "out-of-sequence"
@@ -259,3 +268,114 @@ def batches(
             )
         )
     return result
+
+
+# --- the stage -----------------------------------------------------------------------------
+
+ICLOUD_FOLDER = "iCloud Photos"
+_LEFT_OUT = frozenset({"edited", "google-creation", "live-photo-motion"})
+
+
+def _current(item: CatalogueItem, candidates: Mapping[str, datetime]) -> datetime | None:
+    """The date the item has, or ingest plans to write; the user's answer comes first."""
+    if "user" in candidates:
+        return candidates["user"]
+    if item.source == "icloud":
+        return candidates.get("icloud")
+    for source in ("exif", "quicktime"):
+        if source in candidates and not is_placeholder(candidates[source]):
+            return candidates[source]
+    planned = json.loads(item.metadata_plan).get("taken")
+    return datetime.fromisoformat(planned) if planned else None
+
+
+def dated_items(catalogue: Catalogue, *, answered: bool = True) -> list[Dated]:
+    """Every audited item. ``answered=False`` ignores the dates the user already gave, so
+    an answer is always worked out from the dates the batch was shown with."""
+    duplicates = {
+        item_id
+        for group in catalogue.groups("duplicate")
+        for item_id, role, _ in catalogue.group_members(group.id)
+        if role == "duplicate"
+    }
+    found = []
+    for item in catalogue.items():
+        item_id = cast(int, item.id)
+        if item_id in duplicates or (item.source == "google" and _LEFT_OUT & item.flags):
+            continue
+        candidates = catalogue.date_candidates(item_id)
+        if not answered:
+            candidates.pop("user", None)
+        where = PurePosixPath(item.source_key)
+        google = item.source == "google"
+        found.append(
+            Dated(
+                id=item_id,
+                source=item.source,
+                key=item.source_key,
+                name=where.name if google else item.title or item.source_key,
+                folder=where.parent.name if google else ICLOUD_FOLDER,
+                camera=item.camera,
+                taken=_current(item, candidates),
+                candidates=candidates,
+            )
+        )
+    return found
+
+
+def name_of(item: Dated) -> str:
+    return f"{item.source}:{item.key}"
+
+
+def _iso(when: datetime | None) -> str | None:
+    return None if when is None else when.isoformat()
+
+
+class DateAuditStage:
+    """Propose ``date-batch`` groups of items whose dates are doubtful, with suggestions."""
+
+    name = "date-audit"
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+    def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        items = dated_items(catalogue)
+        flagged = audit(items, self.now)
+        wanted = set()
+        for batch in batches(items, flagged, suggestions(items, flagged)):
+            wanted.add(batch.key)
+            members: list[JSONValue] = [
+                [m.source, m.key, ",".join(sorted(batch.reasons[m.id]))] for m in batch.members
+            ]
+            details: dict[str, JSONValue] = {
+                "problem": batch.problem,
+                "camera": batch.camera,
+                "folder": batch.folder,
+                "prefix": batch.prefix,
+                "current": {name_of(m): _iso(m.taken) for m in batch.members},
+                "suggestions": {name_of(m): _iso(batch.suggestions[m.id]) for m in batch.members},
+                "offset_seconds": None
+                if batch.offset is None
+                else int(batch.offset.total_seconds()),
+                "members": members,
+            }
+            yield Action("propose-date-batch", batch.key, details)
+        for stale in catalogue.groups("date-batch"):
+            if stale.key not in wanted:
+                yield Action("retire-date-batch", stale.key)
+
+    def apply(self, action: Action, catalogue: Catalogue) -> None:
+        if action.kind == "retire-date-batch":
+            catalogue.discard_group("date-batch", action.target)
+            return
+        details = dict(action.details)
+        listed = cast(list[list[str]], details.pop("members"))
+        group = catalogue.upsert_group("date-batch", action.target, details)
+        members = []
+        for rank, (source, key, reasons) in enumerate(listed):
+            item_id = catalogue.item_for_key(cast(Source, source), key)
+            if item_id is None:
+                raise KeyError(f"{source}:{key} is no longer in the catalogue")
+            members.append((item_id, reasons, rank))
+        catalogue.set_group_members(group, members)

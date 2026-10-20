@@ -1,5 +1,6 @@
 """Turning one answer per date batch into a date for every item in it."""
 
+import json
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
@@ -7,7 +8,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from photomigrate.analyse.date_audit import Dated
-from photomigrate.analyse.date_fixes import AnswerError, Fix, fixes
+from photomigrate.analyse.date_fixes import AnswerError, Fix, fixes, planned_write
+from photomigrate.catalogue import CatalogueItem
+from photomigrate.ingest.exif import MetadataWrite
 
 _ids = iter(range(1, 100_000))
 
@@ -105,3 +108,33 @@ def test_keeping_confirms_the_dates_items_have() -> None:
 def test_answers_that_cannot_work_are_errors(answer: dict[str, object], message: str) -> None:
     with pytest.raises(AnswerError, match=message):
         fixes([A], answer, SUGGESTED)
+
+
+ZONE = timezone(timedelta(hours=2))
+
+
+def google_item(plan: dict[str, object]) -> CatalogueItem:
+    return CatalogueItem(
+        source="google", source_key="k", kind="photo", metadata_plan=json.dumps(plan)
+    )
+
+
+def test_import_writes_ingests_plan_when_no_date_was_given() -> None:
+    plan = {"taken": "2019-07-01T12:00:00+00:00", "latitude": 1.0, "longitude": 2.0}
+
+    written = planned_write(google_item(plan), {}, ZONE)
+
+    assert written == MetadataWrite(datetime(2019, 7, 1, 12, 0, tzinfo=UTC), 1.0, 2.0)
+
+
+def test_import_writes_the_given_date_in_the_home_zone_over_ingests_plan() -> None:
+    plan = {"taken": "2019-07-01T12:00:00+00:00", "description": "Nice"}
+    given_date = {"user": datetime(2004, 7, 1, 12, 0)}
+
+    written = planned_write(google_item(plan), given_date, ZONE)
+
+    assert written == MetadataWrite(
+        taken=datetime(2004, 7, 1, 12, 0, tzinfo=ZONE), description="Nice"
+    )
+    shifted = {"user": datetime(2019, 7, 1, 13, 0, tzinfo=UTC)}
+    assert planned_write(google_item({}), shifted, ZONE).taken == shifted["user"]

@@ -11,16 +11,30 @@ The review gallery stores the answer as the batch's ``date`` decision. The answe
   much (a camera clock that was wrong), keeping its UTC offset if it has one.
 
 Entered dates are local wall-clock time, like EXIF.
+
+**The stage** (``date-fixes``, run by ``analyse`` before the audit) turns each answered batch
+into one action per item: ``fix-date`` for Google items, ``plan-timewarp`` for iCloud items
+(osxphotos timewarp runs at import, M4). Either way the new date is stored as the item's
+``user`` date candidate, and ``date-approx`` is its keyword exactly when the date is a year
+guess. Nothing else changes: the importer writes a Google working copy from
+``planned_write``, which puts that date over ingest's plan. Answers are worked out from the
+dates the batch was shown with, so applying one again changes nothing. An answer that cannot
+work becomes a ``bad-answer`` action in the plan, and the other batches still apply.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import dataclasses
+import json
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, tzinfo
+from typing import Any, cast
 
-from photomigrate.analyse.date_audit import Dated
+from photomigrate.analyse.date_audit import Dated, dated_items, name_of
+from photomigrate.catalogue import Catalogue, CatalogueItem, Source
+from photomigrate.ingest.exif import MetadataWrite
+from photomigrate.runner import Action, JSONValue
 
 ANSWERS = ("accept", "keep", "date", "year", "shift")
 APPROX_KEYWORD = "date-approx"
@@ -82,3 +96,62 @@ def fixes(
         found = [(m.id, suggested.get(m.id)) for m in members]
         return [Fix(item_id, when, approx=False) for item_id, when in found if when]
     raise AnswerError(f"an answer needs one of {', '.join(ANSWERS)} as 'answer', not {kind!r}")
+
+
+def planned_write(
+    item: CatalogueItem, candidates: Mapping[str, datetime], zone: tzinfo
+) -> MetadataWrite:
+    """What import writes into a Google item's working copy: ingest's plan, with the date the
+    review gave (in the home ``zone`` when it is a bare local time) instead of its own."""
+    plan = MetadataWrite.from_dict(json.loads(item.metadata_plan))
+    given = candidates.get("user")
+    if given is None:
+        return plan
+    return dataclasses.replace(plan, taken=given if given.tzinfo else given.replace(tzinfo=zone))
+
+
+class DateFixStage:
+    name = "date-fixes"
+
+    def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        by_id = {item.id: item for item in dated_items(catalogue, answered=False)}
+        for group in catalogue.groups("date-batch"):
+            answer = catalogue.decision("group", group.id, "date")
+            if answer is None:
+                continue
+            members = [by_id[i] for i, _, _ in catalogue.group_members(group.id) if i in by_id]
+            shown = cast(dict[str, str | None], group.details.get("suggestions", {}))
+            suggested = {
+                m.id: datetime.fromisoformat(text)
+                for m in members
+                if (text := shown.get(name_of(m)))
+            }
+            try:
+                found = fixes(members, answer, suggested)
+            except AnswerError as exc:
+                yield Action("bad-answer", group.key, {"answer": answer, "error": str(exc)})
+                continue
+            for fix in found:
+                item = by_id[fix.item_id]
+                details: dict[str, JSONValue] = {
+                    "source": item.source,
+                    "key": item.key,
+                    "from": None if item.taken is None else item.taken.isoformat(),
+                    "to": fix.when.isoformat(),
+                    "approx": fix.approx,
+                    "batch": group.key,
+                }
+                kind = "fix-date" if item.source == "google" else "plan-timewarp"
+                yield Action(kind, name_of(item), details)
+
+    def apply(self, action: Action, catalogue: Catalogue) -> None:
+        if action.kind == "bad-answer":
+            return  # reported in the plan; the review needs to answer again
+        details = action.details
+        item_id = catalogue.item_for_key(cast(Source, details["source"]), str(details["key"]))
+        if item_id is None:
+            raise KeyError(f"{action.target} is no longer in the catalogue")
+        catalogue.set_date_candidate(item_id, "user", datetime.fromisoformat(str(details["to"])))
+        catalogue.set_keywords(
+            item_id, APPROX_KEYWORD, [APPROX_KEYWORD] if details["approx"] else []
+        )
