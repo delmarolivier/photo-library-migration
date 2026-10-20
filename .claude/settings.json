@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv:*)", "Bash(git:*)", "Bash(gh:*)",
+      "Bash(exiftool:*)", "Bash(ffmpeg:*)", "Bash(ffprobe:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Read(~/Pictures/**)", "Edit(~/Pictures/**)"
+    ]
+  }
+}
