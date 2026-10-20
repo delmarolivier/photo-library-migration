@@ -215,3 +215,11 @@ def test_the_camera_is_recorded(test_library: Path, tmp_path: Path) -> None:
 
     cameras = {i.camera for i in icloud_items(tmp_path).values() if i.sha256}
     assert any(camera and camera.startswith("Apple iPhone") for camera in cameras)
+
+
+def test_the_size_of_each_original_is_recorded(test_library: Path, tmp_path: Path) -> None:
+    index(test_library, tmp_path)
+
+    for item in icloud_items(tmp_path).values():
+        if item.original_path:
+            assert item.size == (test_library / item.original_path).stat().st_size

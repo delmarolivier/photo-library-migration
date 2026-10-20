@@ -171,9 +171,11 @@ class IndexStage:
         rate: int | None = None
         video: VideoMetrics | None = None
         embedded = Embedded()
+        size = None
         if details["original"]:
             original = self.library / str(details["original"])
             sha256 = sha256_file(original)
+            size = original.stat().st_size
             if self._exiftool is None:
                 self._exiftool = ExifTool()
             embedded = self._exiftool.read(original)
@@ -209,6 +211,7 @@ class IndexStage:
                 flags=frozenset(flags),
                 content_id=embedded.content_id,
                 camera=embedded.camera,
+                size=size,
                 scores=json.dumps(details["scores"], sort_keys=True),
                 timezone=cast(str | None, details["timezone"]),
                 quality=as_json(photo.metrics or video),

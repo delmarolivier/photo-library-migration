@@ -419,3 +419,12 @@ def test_the_camera_is_recorded(applied) -> None:  # type: ignore[no-untyped-def
     assert stored["Takeout/Google Photos/Photos from 2019/IMG_1001.JPG"].camera == "Apple iPhone 8"
     clip = stored["Takeout/Google Photos/Photos from 2019/VID_20190704_101010.mp4"]
     assert clip.camera is None
+
+
+def test_each_item_records_the_size_of_its_original(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+
+    for key, row in items(tmp).items():
+        archive = manifest.zips[manifest.parts[key] - 1]
+        with zipfile.ZipFile(archive) as bundle:
+            assert row.size == bundle.getinfo(key).file_size, key

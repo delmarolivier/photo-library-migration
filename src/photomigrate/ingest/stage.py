@@ -268,6 +268,7 @@ class IngestStage:
             google_url=url,
             content_id=embedded.content_id,
             camera=embedded.camera,
+            size=entry.size,
             quality=as_json(photo.metrics or video),
             embedding=photo.embedding,
             faces=photo.faces,

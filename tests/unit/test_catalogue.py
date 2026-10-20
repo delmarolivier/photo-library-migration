@@ -748,3 +748,9 @@ def test_v15_remembers_what_is_staged_for_to_delete(cat: Catalogue, path: Path) 
     assert cat.staged() == {item_id: "clutter"}
     cat.set_staged(item_id, None)
     assert cat.staged() == {}
+
+
+def test_v16_adds_the_file_size(cat: Catalogue) -> None:
+    item_id = cat.upsert_item(PHOTO.replace(size=1234))
+
+    assert cat.item(item_id).size == 1234
