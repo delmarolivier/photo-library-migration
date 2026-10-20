@@ -2,6 +2,37 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## iCloud index (M2-01)
+
+`photomigrate index <Library.photoslibrary> [--apply]` (`index.icloud`, macOS only, osxphotos).
+
+**Nothing in the real library is written, not even SQLite bookkeeping.** A WAL-mode SQLite
+reader updates the database's `-shm` file even with `mode=ro`, and tests caught osxphotos
+changing its mtime. So osxphotos reads a **shadow library**: a temporary folder holding a
+private clone of `database/` (an APFS clone via `cp -c`, else a copy) and read-only symlinks to
+`originals/`, `resources/` and the rest. Paths come back through the symlinks and are mapped to
+the real library. A `safety.ReadOnlyGuard` on the real library is active for the whole run.
+It refuses write-mode opens, read-write sqlite connections, renames, removals, mkdir, chmod,
+utime, copies *into* the library, hard links, symlinks created inside it, and exiftool writes
+(`announce_write`).
+
+Per asset (catalogue v5 adds `scores` and `timezone`):
+- the Photos uuid, original filename, the original's path relative to the library;
+- SHA-256 and pHash/dHash (`hashing`, orientation-aware) of the original;
+- the Photos date with its offset (date candidate `icloud`) and embedded EXIF/QuickTime dates;
+- GPS, size, video duration and Live Photo content id (from exiftool);
+- favourite, caption, albums (`albums`, source `icloud`), keywords, and Apple's 27 scores;
+- flags: `edited`, `live-photo`, `hidden`, `burst`, `shared`, `cloud-asset`.
+
+Originals that aren't on this Mac become `index-missing` actions: the item is flagged
+`original-missing`, has no hashes, and is listed by the CLI. Quit Photos while indexing, so the
+cloned database is a consistent snapshot.
+
+Tests (`tests/macos`, marked `macos`) use osxphotos' own test libraries (Test-27.0_DevBeta and
+Test-Live-15.7.2), fetched once at a pinned commit into the system temp dir. Each test gets
+its own APFS clone. They prove the library is byte- and mtime-identical after a dry run and an
+apply, and that the guard saw zero writes.
+
 ## Ingest (M1-04)
 
 `photomigrate ingest <takeout-dir> [--apply]` catalogues every Google Photos item **straight

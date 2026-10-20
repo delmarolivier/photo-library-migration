@@ -2,15 +2,27 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M1-06] CLA-78 (Live Photo pairing). Milestone 1's code is complete.
-- Next issue: [M2-01] CLA-79 (iCloud library indexer, read-only). This needs the Air with the
-  Photos library on the external drive, Full Disk Access for `sshd`, and Delmar's go-ahead.
+- Last completed issue: [M2-01] CLA-79 (iCloud library indexer, read-only).
+- Next issue: [M2-02] CLA-80 (photo dedupe: exact and perceptual).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
     download the 12 Takeout parts onto it before the Google links expire.
+  - Before the first real `index` (CLAUDE.md rule 10):
+    - move the Photos library onto the external drive and turn on "Download Originals";
+    - give `sshd-keygen-wrapper` Full Disk Access (System Settings > Privacy & Security);
+    - quit Photos while indexing;
+    - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M2-01
+- `index.icloud` plus `photomigrate index`; `hashing` (SHA-256, pHash/dHash); `safety.ReadOnlyGuard`
+  and `announce_write`; catalogue v5 (scores, timezone).
+- Finding: osxphotos' `mode=ro` SQLite reads still bump the library's `-shm` mtime. That
+  led to the shadow-library design, so the real library is now untouched, mtimes included.
+- Tests: 569, 100%. The macOS tests use osxphotos' test libraries (fetched into tmp,
+  about 200 MB, pinned to v0.77.2).
+
 ### 2026-10-20: session 1 (continued): M1-06
 - Live Photo pairing (`ingest.livephotos`, the `live-photos` stage run by `ingest`).
   Catalogue v4 adds `content_id`, the groups API and `add_flags`. `dates.moment_gap` and
