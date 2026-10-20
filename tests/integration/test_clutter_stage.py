@@ -208,3 +208,14 @@ def test_zero_shot_labels_sum_to_one_on_a_stored_embedding() -> None:
     labels = ZeroShot(ThumbnailEmbedder()).labels(np.ones(256, dtype=np.float32) / 16)
 
     assert sum(labels.values()) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_an_unpaired_edit_is_queued_itself(tmp_path: Path) -> None:
+    path = ingest(build(tmp_path), tmp_path)
+    with Catalogue.open(path) as catalogue:
+        edit = next(i for i in catalogue.items("google") if "edited" in i.flags)
+        catalogue.add_flags(edit.id or 0, {"unpaired-edit"})
+
+    clutter(path, tmp_path)
+
+    assert any("edited" in name for name in queue(path)), "nothing else will ask about it"

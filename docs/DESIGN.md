@@ -2,6 +2,30 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Reconciliation report (M4-03)
+
+`photomigrate report [--out data/report]` (`photomigrate.report`) reads a snapshot of the
+catalogue (it never writes it) and writes `report.csv` and `report.html`.
+
+- **One status per Google item** (an album copy counts with its item; `copies` says how many):
+  - `imported`, with its Photos uuid;
+  - `duplicate-of-existing`, with the uuid of the copy that stays (the iCloud item, or the
+    Google keeper once imported);
+  - `rejected-by-user`, with the reason. A Live Photo clip shares its still's fate.
+  - `unaccounted`: not imported yet, waiting for review (and which queue), a duplicate whose
+    keeper isn't imported yet, or a Takeout file that ingest logged but never catalogued
+    (checked against the ingest action log).
+- **SHA-256 trail** per row: Takeout file (`items.sha256`) → working copy
+  (`imports.working_sha256`) → Photos uuid.
+- **Totals:** counts and bytes per source and status (catalogue v16 `items.size`, from the
+  zip entry or the original). The HTML also lists rejection reasons, date fixes (items with a
+  `user` date), approved location fixes, and the iCloud items staged in "To Delete".
+- **Exit code 1 while anything is unaccounted**: that is the migration's finish line.
+- **Found on the way:** a Google edit of a Google creation (`IMG_1003-SMILE-edited.jpg`)
+  stayed pending forever, because clutter never asks about edits. Edits now share their
+  original's clutter answer, and an `unpaired-edit` is queued itself. The full-pipeline test
+  ends with the report at 0 unaccounted.
+
 ## "To Delete" and the no-delete guarantee (M4-02)
 
 - **Staging** (part of `photomigrate import`): `stage-to-delete` puts every existing iCloud

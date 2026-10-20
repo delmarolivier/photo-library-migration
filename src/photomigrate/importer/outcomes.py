@@ -48,6 +48,8 @@ class _Verdicts:
     rejected: dict[int, list[str]] = field(default_factory=lambda: defaultdict(list))
     pending: dict[int, list[str]] = field(default_factory=lambda: defaultdict(list))
     follows: dict[int, int] = field(default_factory=dict)
+    original_of: dict[int, int] = field(default_factory=dict)
+    """An edited copy's original, whose clutter answer it shares."""
 
 
 def _verdicts(catalogue: Catalogue) -> _Verdicts:
@@ -79,6 +81,7 @@ def _verdicts(catalogue: Catalogue) -> _Verdicts:
                 found.rejected[i].append("best-shot")
     for group in catalogue.groups("edit-pair"):
         (original, _, _), (edited, _, _) = catalogue.group_members(group.id)
+        found.original_of[edited] = original
         answer = catalogue.decision("group", group.id, "edit-pair") or {}
         keep = answer.get("keep", group.details.get("keep", []))
         for i, reason in ((original, "original version"), (edited, "edited version")):
@@ -89,7 +92,19 @@ def _verdicts(catalogue: Catalogue) -> _Verdicts:
             answer = catalogue.decision("item", item_id, kind)
             if answer is not None and answer.get("reject") is True:
                 found.rejected[item_id].append(kind)
+    for edited, original in found.original_of.items():  # an edit is not asked about itself
+        if (
+            "clutter" in found.rejected.get(original, [])
+            and "clutter" not in found.rejected[edited]
+        ):
+            found.rejected[edited].append("clutter")
     return found
+
+
+def _yes(catalogue: Catalogue, found: _Verdicts, item_id: int) -> bool:
+    """Whether the review said yes to importing a Google creation (an edit: its original)."""
+    asked = found.original_of.get(item_id, item_id)
+    return catalogue.decision("item", asked, "clutter") == {"reject": False}
 
 
 def outcomes(catalogue: Catalogue) -> dict[int, Outcome]:
@@ -107,9 +122,7 @@ def outcomes(catalogue: Catalogue) -> dict[int, Outcome]:
             result[item_id] = Outcome(item_id, "rejected-by-user", found.rejected[item_id][0])
         elif found.pending.get(item_id):
             result[item_id] = Outcome(item_id, "pending", found.pending[item_id][0])
-        elif "google-creation" in item.flags and catalogue.decision("item", item_id, "clutter") != {
-            "reject": False
-        }:
+        elif "google-creation" in item.flags and not _yes(catalogue, found, item_id):
             result[item_id] = Outcome(item_id, "pending", "google creation")
         else:
             result[item_id] = Outcome(item_id, "import", "")

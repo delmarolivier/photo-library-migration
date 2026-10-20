@@ -1,4 +1,3 @@
-import pytest
 from typer.testing import CliRunner
 
 from photomigrate import __version__
@@ -30,13 +29,3 @@ def test_no_arguments_shows_help() -> None:
 
     assert "Usage" in result.output
     assert "ingest" in result.output
-
-
-@pytest.mark.parametrize(
-    "stage", [s for s in STAGES if s not in ("ingest", "index", "analyse", "review", "import")]
-)
-def test_stub_stage_reports_not_implemented_and_fails(stage: str) -> None:
-    result = runner.invoke(app, [stage])
-
-    assert result.exit_code == 1
-    assert f"'{stage}' is not implemented yet" in result.stderr

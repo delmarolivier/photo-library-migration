@@ -27,7 +27,8 @@ categories a camera does not make:
   (0.6), stripped metadata (0.2), a messaging size (0.25). A camera: times 0.3.
 
 Zero-shot labels come from the photo's stored embedding and open_clip's text prompts, only
-when Vision measured no text (Linux).
+when Vision measured no text (Linux). Google edits share their original's answer and are not
+queued themselves, unless their original is missing (``unpaired-edit``).
 """
 
 from __future__ import annotations
@@ -260,8 +261,6 @@ class ZeroShot:
 
 # --- the stage -----------------------------------------------------------------------------
 
-_LEFT_OUT = frozenset({"edited", "live-photo-motion"})
-
 
 def _clues(item: CatalogueItem, dates: Iterable[str], zero_shot: ZeroShot | None) -> Clues:
     text = text_from_json(item.text)
@@ -303,7 +302,9 @@ class ClutterStage:
         stored = catalogue.clutter()
         for item in catalogue.items():
             item_id = cast(int, item.id)
-            if item_id in duplicates or (item.source == "google" and _LEFT_OUT & item.flags):
+            paired_edit = "edited" in item.flags and "unpaired-edit" not in item.flags
+            motion = "live-photo-motion" in item.flags
+            if item_id in duplicates or (item.source == "google" and (paired_edit or motion)):
                 continue
             clues = _clues(item, catalogue.date_candidates(item_id), self.zero_shot)
             found = classify(clues, self.config.min_score)

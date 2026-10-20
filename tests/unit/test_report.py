@@ -184,3 +184,15 @@ def test_the_html_shows_the_totals_and_every_gap(cat: Catalogue, tmp_path: Path)
     assert "1 unaccounted" in page
     assert "IMG_0014.JPG" in page
     assert "not imported yet" in page
+
+
+def test_the_clip_of_a_rejected_still_is_rejected_with_it(cat: Catalogue) -> None:
+    still = google(cat, "IMG_0015.HEIC")
+    clip = google(cat, "IMG_0015.MOV", flags=frozenset({"live-photo-motion"}))
+    group = cat.upsert_group("live-pair", f"{ROOT}/IMG_0015.HEIC", {})
+    cat.set_group_members(group, [(still, "still", 0), (clip, "motion", 1)])
+    cat.set_decision("item", still, "quality", {"reject": True})
+
+    assert (line(cat, "IMG_0015.MOV").status, line(cat, "IMG_0015.MOV").detail) == (
+        "rejected-by-user", "quality",
+    )  # fmt: skip

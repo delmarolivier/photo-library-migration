@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from photomigrate import __version__
 from photomigrate.analyse.best_shot import BestShotStage
@@ -21,6 +22,7 @@ from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStag
 from photomigrate.analyse.edited import EditedVersionsStage
 from photomigrate.analyse.locations import LocationStage
 from photomigrate.analyse.quality import QualityStage
+from photomigrate.catalogue import Catalogue
 from photomigrate.config import Config, ConfigError, load_config
 from photomigrate.embedding import default_embedder
 from photomigrate.faces import face_reader
@@ -31,6 +33,7 @@ from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.ingest.takeout import TakeoutError
+from photomigrate.report import reconcile, write_csv, write_html
 from photomigrate.review.app import create_app, serve
 from photomigrate.runner import (
     DEFAULT_CATALOGUE,
@@ -364,6 +367,45 @@ def review(
         serve(gallery, port)
 
 
+DEFAULT_REPORT = Path("data/report")
+
+
+@app.command()
+def report(
+    ctx: typer.Context,
+    out: Annotated[
+        Path, typer.Option(help="Where report.csv and report.html go.")
+    ] = DEFAULT_REPORT,
+) -> None:
+    """Reconciliation: every Google item imported, a duplicate of one that stays, or
+    rejected in review. Exits 1 while anything is unaccounted."""
+    settings: Settings = ctx.obj
+    with Catalogue.snapshot(settings.catalogue) as catalogue:  # read-only
+        result = reconcile(catalogue)
+    write_csv(result, out / "report.csv")
+    write_html(result, out / "report.html")
+    console = Console()
+    table = Table(title="Reconciliation")
+    for column in ("Source", "Status", "Items", "Bytes"):
+        table.add_column(column)
+    for source, rows in result.totals().items():
+        for status, (count, size) in rows.items():
+            table.add_row(source, status, str(count), f"{size:,}")
+    console.print(table)
+    console.print(
+        f"Date fixes {result.date_fixes}, location fixes {result.location_fixes}, "
+        f"staged in To Delete {result.staged}. Report: {out / 'report.html'}"
+    )
+    gaps = result.unaccounted
+    console.print(f"{len(gaps)} unaccounted of {len(result.lines)} Google items.")
+    for line in gaps[:20]:
+        console.print(f"  {line.path}: {line.detail}")
+    if len(gaps) > 20:
+        console.print(f"  … and {len(gaps) - 20} more (see the report).")
+    if gaps:
+        raise typer.Exit(code=1)
+
+
 def warn_missing_originals(missing: list[Action], console: Console, limit: int = 20) -> None:
     """List the items whose originals are only in iCloud, so they are not silently skipped."""
     if not missing:
@@ -377,20 +419,3 @@ def warn_missing_originals(missing: list[Action], console: Console, limit: int =
         console.print(f"  {action.details['filename']} ({action.target})")
     if len(missing) > limit:
         console.print(f"  … and {len(missing) - limit} more (see the plan JSON).")
-
-
-_STAGES = {
-    "report": "Reconciliation report: every Google item accounted for.",
-}
-
-
-def _register_stub(stage: str, help_text: str) -> None:
-    def stub() -> None:
-        typer.echo(f"'{stage}' is not implemented yet (see Linear P-CLA-3).", err=True)
-        raise typer.Exit(code=1)
-
-    app.command(stage, help=help_text)(stub)
-
-
-for _stage, _help in _STAGES.items():
-    _register_stub(_stage, _help)
