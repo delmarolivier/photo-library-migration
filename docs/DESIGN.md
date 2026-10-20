@@ -1,5 +1,7 @@
 # Design notes
 
+Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
+
 ## Safety rails (M1-01)
 
 ### Media guard (`photomigrate.safety.PathGuard`, CLAUDE.md rule 4)
