@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 
 import pytest
-from photomigrate.index.icloud import IndexStage
 from typer.testing import CliRunner
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.cli import app
+from photomigrate.index.icloud import IndexStage
 from photomigrate.runner import RunResult, run_stage
 
 pytestmark = pytest.mark.macos
@@ -145,12 +145,12 @@ def test_the_cli_is_a_dry_run_by_default_and_lists_missing_originals(
     args = ["--catalogue", str(tmp_path / "c.sqlite"), "--plan-dir", str(tmp_path / "plans")]
 
     dry = CliRunner().invoke(app, [*args, "index", str(test_library)])
-    wet = CliRunner().invoke(app, [*args, "index", str(test_library), "--apply"])
 
     assert dry.exit_code == 0, dry.output
     assert "Dry run" in dry.output
     assert "1 original is not on this Mac" in dry.output
     assert not (tmp_path / "c.sqlite").exists()
+    wet = CliRunner().invoke(app, [*args, "index", str(test_library), "--apply"])
     assert wet.exit_code == 0, wet.output
     assert "Applied 13 actions" in wet.output
 

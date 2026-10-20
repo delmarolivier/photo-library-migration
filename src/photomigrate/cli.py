@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from photomigrate import __version__
+from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
 from photomigrate.ingest.stage import IngestStage
@@ -16,6 +17,7 @@ from photomigrate.ingest.takeout import TakeoutError
 from photomigrate.runner import (
     DEFAULT_CATALOGUE,
     DEFAULT_PLAN_DIR,
+    Action,
     StageFailedError,
     render_result,
     run_stage,
@@ -107,8 +109,47 @@ def ingest(
         raise typer.Exit(code=1) from exc
 
 
+@app.command()
+def index(
+    ctx: typer.Context,
+    library: Annotated[
+        Path, typer.Argument(help="The .photoslibrary to read. It is never written.")
+    ],
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Catalogue the items (else a dry run).")
+    ] = False,
+) -> None:
+    """Catalogue the iCloud Photos library, read-only: hashes, dates, albums, scores."""
+    settings: Settings = ctx.obj
+    console = Console()
+    try:
+        with IndexStage(library) as stage:
+            result = run_stage(
+                stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
+            )
+    except (LibraryError, StageFailedError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    render_result(result, console)
+    warn_missing_originals([a for a in result.plan.actions if a.kind == "index-missing"], console)
+
+
+def warn_missing_originals(missing: list[Action], console: Console, limit: int = 20) -> None:
+    """List the items whose originals are only in iCloud, so they are not silently skipped."""
+    if not missing:
+        return
+    verb = "original is" if len(missing) == 1 else "originals are"
+    console.print(
+        f"[yellow]Warning:[/] {len(missing)} {verb} not on this Mac. Turn on Photos > "
+        "Settings > iCloud > Download Originals, then index again:"
+    )
+    for action in missing[:limit]:
+        console.print(f"  {action.details['filename']} ({action.target})")
+    if len(missing) > limit:
+        console.print(f"  … and {len(missing) - limit} more (see the plan JSON).")
+
+
 _STAGES = {
-    "index": "Read-only index of the iCloud library.",
     "analyse": (
         "Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location."
     ),

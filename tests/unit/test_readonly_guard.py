@@ -33,6 +33,7 @@ def guard() -> ReadOnlyGuard:
         ("open", (str(OUTSIDE), "w", os.O_WRONLY | os.O_CREAT)),
         ("os.remove", (str(OUTSIDE), None)),
         ("open", (3, "w", os.O_WRONLY)),
+        ("os.symlink", (str(LIB / "originals"), str(OUTSIDE), None)),
     ],
 )
 def test_reads_and_writes_elsewhere_pass(
@@ -64,6 +65,8 @@ def test_reads_and_writes_elsewhere_pass(
         ("shutil.copyfile", (str(OUTSIDE), str(LIB / "x.jpg"))),
         ("shutil.rmtree", (str(LIB), None)),
         ("photomigrate.write", (str(LIB / "x.jpg"),)),
+        ("os.symlink", (str(OUTSIDE), str(LIB / "link"), None)),
+        ("os.link", (str(LIB / "x.jpg"), str(OUTSIDE), None, None)),
     ],
 )
 def test_writes_inside_the_tree_are_refused(

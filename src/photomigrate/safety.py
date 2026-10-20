@@ -255,7 +255,7 @@ def _written_paths(event: str, args: tuple[Any, ...]) -> list[str]:
         return list(_path_args((path,))) if writing else []
     if event == "sqlite3.connect":
         return _sqlite_writes(args[0])
-    if event in _COPY_EVENTS:
+    if event in _COPY_EVENTS or event == "os.symlink":  # only the destination changes
         return list(_path_args(args[1:2]))
     if event in _MUTATING_EVENTS:
         return list(_path_args(args))
