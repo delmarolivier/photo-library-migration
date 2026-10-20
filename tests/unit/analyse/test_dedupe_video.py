@@ -6,13 +6,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+
 from photomigrate.analyse.dedupe_video import (
     VideoDedupeConfig,
     VideoRecord,
     find_video_duplicates,
     video_keeper_order,
 )
-
 from photomigrate.hashing import bitrate, video_signature
 from photomigrate.testing.media import encode_video, reencode_video, video_frames
 
@@ -171,3 +171,11 @@ def test_unknown_sizes_and_bitrates_rank_last(tmp_path: Path) -> None:
     unknown = replace(known, id=next(_ids), width=None, height=None, bitrate=None, key="unknown")
 
     assert video_keeper_order([unknown, known])[0] is known
+
+
+def test_unknown_sizes_skip_the_aspect_check(tmp_path: Path) -> None:
+    data = clip(8)
+    a = replace(record(tmp_path, data), width=None, height=None)
+    b = record(tmp_path, reencode_video(data, "mp4", crf=30))
+
+    assert groups([a, b]) == [{a.id, b.id}]

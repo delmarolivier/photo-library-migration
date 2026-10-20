@@ -199,3 +199,18 @@ def test_analyse_reports_a_failing_run(
 
     assert result.exit_code == 1
     assert "disk unplugged" in result.output
+
+
+def test_a_live_pair_group_missing_its_motion_is_tolerated(
+    catalogue_path: Path, tmp_path: Path
+) -> None:
+    with Catalogue.open(catalogue_path) as catalogue:
+        still = catalogue.item_for_key("google", BEACH)
+        assert still is not None
+        group = catalogue.upsert_group("live-pair", "odd", {})
+        catalogue.set_group_members(group, [(still, "still", 0)])
+        icloud_copy(catalogue, BEACH, "UUID-BEACH")
+
+    dedupe(catalogue_path, tmp_path)
+
+    assert all(role != "motion" for _, _, role in proposals(catalogue_path)[f"google:{BEACH}"])

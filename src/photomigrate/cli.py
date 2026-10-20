@@ -10,6 +10,7 @@ from rich.console import Console
 
 from photomigrate import __version__
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
+from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
 from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
@@ -142,29 +143,36 @@ def analyse(
         bool, typer.Option("--apply", help="Store the proposals (else a dry run).")
     ] = False,
     candidate_phash: Annotated[
-        int, typer.Option(help="Max 64-bit pHash distance to consider a pair.")
+        int, typer.Option(help="Max 64-bit pHash distance to consider a photo pair.")
     ] = DedupeConfig.candidate_phash,
     fine_max: Annotated[
-        int, typer.Option(help="Max 256-bit pHash distance for a near-duplicate.")
+        int, typer.Option(help="Max 256-bit pHash distance for a near-duplicate photo.")
     ] = DedupeConfig.fine_max,
-    dhash_max: Annotated[int, typer.Option(help="Max dHash distance for a near-duplicate.")] = (
-        DedupeConfig.dhash_max
-    ),
+    dhash_max: Annotated[
+        int, typer.Option(help="Max dHash distance for a near-duplicate photo.")
+    ] = (DedupeConfig.dhash_max),
+    signature_max: Annotated[
+        float, typer.Option(help="Max mean frame distance for a near-duplicate video.")
+    ] = VideoDedupeConfig.signature_max,
 ) -> None:
-    """Propose duplicate groups (exact and near) with keepers. Proposals only; review decides."""
+    """Propose duplicate groups (photos and videos) with keepers. Proposals only."""
     settings: Settings = ctx.obj
-    config = DedupeConfig(candidate_phash=candidate_phash, fine_max=fine_max, dhash_max=dhash_max)
+    console = Console()
+    stages = (
+        DedupeStage(
+            DedupeConfig(candidate_phash=candidate_phash, fine_max=fine_max, dhash_max=dhash_max)
+        ),
+        VideoDedupeStage(VideoDedupeConfig(signature_max=signature_max)),
+    )
     try:
-        result = run_stage(
-            DedupeStage(config),
-            catalogue_path=settings.catalogue,
-            plan_dir=settings.plan_dir,
-            apply=apply,
-        )
+        for stage in stages:
+            result = run_stage(
+                stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
+            )
+            render_result(result, console)
     except StageFailedError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    render_result(result, Console())
 
 
 def warn_missing_originals(missing: list[Action], console: Console, limit: int = 20) -> None:

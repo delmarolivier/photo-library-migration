@@ -5,10 +5,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from photomigrate.analyse.dedupe_video import VideoDedupeStage
 from typer.testing import CliRunner
 
 from photomigrate.analyse.dedupe_photo import DedupeStage
+from photomigrate.analyse.dedupe_video import VideoDedupeStage
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.cli import app
 from photomigrate.hashing import bitrate, video_signature
