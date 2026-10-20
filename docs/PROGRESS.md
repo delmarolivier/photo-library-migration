@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M3-02] CLA-84 (best-shot picker).
-- Next issue: [M3-03] CLA-85 (date audit).
+- Last completed issue: [M3-03] CLA-85 (date audit).
+- Next issue: [M3-04] CLA-86 (clutter detection).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Best shot: `min_similarity` defaults to 0.94, measured on the sample (DESIGN, "Best
@@ -17,6 +17,24 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M3-03
+- Delmar asked to keep going through every milestone that needs no human action without
+  waiting for confirmation (the CLAUDE.md safety rules still apply).
+- Catalogue v11 `items.camera` (EXIF/QuickTime make and model) and a decisions API
+  (`set_decision`, `decision`). File-name dates: macOS screenshots (12-hour too), Telegram,
+  Android, bare dates; Hypothesis round trips.
+- `analyse.date_audit` flags missing, placeholder, future, upload-as-taken, conflicting
+  (> 1 day) and out-of-sequence dates, and batches them by problem, camera, folder and prefix
+  with per-item suggestions and a batch offset (`date-batch` groups).
+- `analyse.date_fixes` applies one answer per batch (accept, keep, date, year → 1 July noon
+  + `date-approx`, exact shift): `fix-date` / `plan-timewarp` actions store a `user` date.
+  `planned_write` gives the importer ingest's plan with that date on top.
+- Real sample (/tmp only): 1 batch of 3 (DESIGN, "Date audit").
+- Tests: 888, 100%.
+- Handoff: M3-06 must show date batches (reasons, current dates, suggestions, offset) and
+  store the answer with `set_decision("group", id, "date", {...})`; M4-01 writes Google
+  working copies from `planned_write` and runs timewarp for iCloud items with a `user` date.
+
 ### 2026-10-20: session 1 (continued): M3-02
 - Ingest and index now embed every photo with open_clip (ViT-B-32, LAION-2B, MPS) and read
   faces with Apple Vision (capture quality) plus Core Image (eyes closed), from the same

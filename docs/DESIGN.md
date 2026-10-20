@@ -2,6 +2,59 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Date audit (M3-03)
+
+`photomigrate analyse` ends with `date-fixes` (`analyse.date_fixes`), then `date-audit`
+(`analyse.date_audit`). The audit asks; the fixes apply the review's answers.
+
+- **What is audited:** every item, Google and iCloud, except Google edits, creations and Live
+  Photo motion clips (they follow their original or still, or go to clutter), and photos
+  proposed as another's duplicate. An item's current date: the user's answer, else (iCloud)
+  the Photos date, else (Google) the file's own date unless it's a placeholder, else the date
+  ingest plans to write.
+- **Reasons** (an item can have several):
+
+  | Reason | When |
+  |---|---|
+  | `missing` | no date at all |
+  | `placeholder` | the file or Photos says 1970-01-01, 1980-01-01 or 2000-01-01, or only a placeholder sidecar date is left |
+  | `future` | after today (a day's grace for local times) |
+  | `upload-as-taken` | no file date, and the sidecar's capture time is its upload time |
+  | `conflict` | two capture clues (file, sidecar capture time, Photos date, file name) more than a day apart; upload times and mtimes are never clues; a local time and an instant a whole offset apart agree |
+  | `out-of-sequence` | the camera's shots numbered just before and after agree with each other, and it is more than a day outside them |
+
+- **Sequences:** one source, one camera (catalogue v11 `items.camera`, from EXIF or QuickTime
+  make and model), one name prefix (`IMG_`, `DSC`, `P`…), in shot-number order. `(N)` and edit
+  suffixes are ignored.
+- **File-name dates** (`ingest.names.date_from_filename`, Hypothesis round trips): camera,
+  Pixel, Android and macOS screenshots (12-hour too), WhatsApp, Telegram, Signal, Dropbox, and
+  bare dates (read as midnight).
+- **Batches** (`groups(kind='date-batch')`): flagged items by problem (`undated` or
+  `doubtful`), camera, folder or album (iCloud items: "iCloud Photos"), and name prefix. The key
+  names the batch, not its members, so a stored answer stays attached when a batch grows.
+  Members are in shot order with their reasons as role. Details: problem, camera, folder,
+  prefix, each member's current date and suggestion, and the batch offset.
+- **Suggestions** per item: the date in its name; else interpolated by shot number between the
+  nearest well-dated shots of its sequence (or the one on its side); else a plausible sidecar
+  capture time. A doubtful batch whose members are all off their suggestions by the same amount
+  (to the minute) suggests that **offset** (a wrong camera clock).
+- **Answers** (the review stores one per batch as the group's `date` decision; M3-06):
+  `accept` (each item's suggestion), `keep`, `date` (one date for all), `year` (1 July at noon,
+  keyword `date-approx`; noon keeps the day in any zone), `shift` (`offset_seconds`, exact,
+  keeping each item's UTC offset). Entered dates are local wall-clock time.
+- **Fixes:** one `fix-date` (Google) or `plan-timewarp` (iCloud, run by osxphotos timewarp in
+  M4) action per item. Either way the date becomes the item's `user` candidate, and
+  `date-approx` is its keyword exactly when the date is a year guess. Ingest's metadata plan is
+  left alone: the importer writes a working copy from `date_fixes.planned_write`, which puts the
+  answered date (in the home zone, if it is a bare local time) over ingest's plan. Answers are
+  worked out from the dates the batch was shown with (the `user` candidate ignored), so a shift
+  is never applied twice. An answer that cannot work becomes a `bad-answer` action; the other
+  batches still apply. Answered items are never flagged again.
+- **On the real sample** (one shared album; the /tmp catalogue predates camera data): 1 batch
+  of 3. Two shots are 3 to 5 days out of their neighbours' sequence, and one is the
+  months-apart conflict. The 20 other EXIF-vs-sidecar conflicts are all under 14 hours, below
+  the 1-day rule, and the 171 items dated from their sidecar have a plausible date.
+
 ## Best shot (M3-02)
 
 `photomigrate analyse` runs `best-shot` (`analyse.best_shot`) last, after dedupe and quality.
@@ -312,7 +365,7 @@ Tables (v1):
 | Table | Holds |
 |---|---|
 | `items` | one row per Google or iCloud item, identified by `(source, source_key)` (the Takeout path or Photos UUID): paths, sha256, perceptual hashes, size, duration, GPS, title, description, favourite, flags (a JSON array) |
-| `date_candidates` | one value per `(item, source)`. Sources: `exif`, `quicktime`, `sidecar-taken`, `sidecar-created`, `filename`, `mtime`, `icloud`, `user`. Naive ISO values mean local time with an unknown offset. |
+| `date_candidates` | one value per `(item, source)` (`user`: the review's answer, M3-03). Sources: `exif`, `quicktime`, `sidecar-taken`, `sidecar-created`, `filename`, `mtime`, `icloud`, `user`. Naive ISO values mean local time with an unknown offset. |
 | `groups`, `group_members` | `duplicate`, `best-shot`, `date-batch`, `live-pair`, `edit-pair` groups, with a member role and rank |
 | `decisions` | the user's answers per item or group and kind (import, keep, date…) |
 | `stage_runs`, `actions` | the action log: every applied run and each action's key, status and error |

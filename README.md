@@ -39,8 +39,8 @@ uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary" --apply
 ```
 
 ```sh
-# Link edits, propose duplicate groups, flag quality problems, pick best shots
-# (dry run, then --apply)
+# Link edits, propose duplicate groups, flag quality problems, pick best shots,
+# audit dates and apply the review's date answers (dry run, then --apply)
 uv run photomigrate analyse
 uv run photomigrate --config photomigrate.toml analyse --apply
 ```
@@ -54,7 +54,7 @@ with their defaults. Unknown settings are errors.
 |---|---|
 | `ingest` | Catalogue every item straight from the zips: match sidecars, hash, measure quality, embed photos, read faces, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
 | `index` | Read-only index of the iCloud library: hashes, quality, embeddings, faces, dates, albums, keywords, Apple scores; lists originals that are only in iCloud |
-| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); later dates, clutter, location |
+| `analyse` | Link Google edits to originals (`--edited-policy pair|original-only|edited-only`); photo and video dedupe with proposed keepers; quality flags with scores (blurry, badly exposed, accidental, short or static clips…, thresholds in the config file); best shot: similar shots of one moment grouped, the top two kept and the rest proposed for "To Delete" (window, similarity and score weights in the config file); date audit: missing, placeholder, future, conflicting and out-of-sequence dates batched by camera, folder and name, with suggestions, and the review's answers applied (accept, a date, a year, a shift); later clutter, location |
 | `review` | Local gallery on 127.0.0.1; decisions stored in the catalogue |
 | `import` | Dry-run by default; `--apply` imports approved items and stages removals |
 | `report` | Reconciliation report: every Google item accounted for |
