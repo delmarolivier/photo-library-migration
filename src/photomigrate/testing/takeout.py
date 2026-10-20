@@ -14,6 +14,7 @@ import dataclasses
 import json
 import random
 import string
+import uuid
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -253,6 +254,9 @@ class Item:
     near_duplicate_of: str | None = None
     near_duplicate_kind: NearDuplicateKind | None = None
     google_creation: CreationKind | None = None
+    content_id: str | None = None
+    """The Live Photo identifier the pair shares (embedded in the motion clip only: Apple keeps
+    the still's copy in MakerNotes, which fixtures cannot write)."""
     quirks: frozenset[str] = frozenset()
 
     @property
@@ -429,10 +433,11 @@ class TakeoutBuilder:
         index: int = 0,
         locale: Locale = "en_GB",
         frames: Sequence[Image.Image] | None = None,
+        content_id: str | None = None,
         quirks: Iterable[str] = (),
     ) -> Item:
         clip = list(frames or video_frames(self._seed(), seconds))
-        data = encode_video(clip, _container(name), created=taken)
+        data = encode_video(clip, _container(name), created=taken, content_id=content_id)
         meta = _Meta(geo=geo, description=description, people=tuple(people), locale=locale)
         return self._store(
             folder, name, kind="video", data=data, source=_Source(clip[0], None, "", 0),
@@ -495,14 +500,21 @@ class TakeoutBuilder:
             image=picture, quirks={"live-photo"},
         )  # fmt: skip
         small = picture.resize((64, 48))
+        content_id = str(uuid.UUID(int=self._rng.getrandbits(128))).upper()
         motion = self.video(
             folder, stem + motion_ext, taken=taken, created=still.created, geo=geo,
             sidecar=sidecar if motion_sidecar else None,
             frames=[ImageChops.offset(small, step * 2, 0) for step in range(15)],
-            quirks={"live-photo", "live-photo-motion"},
+            content_id=content_id, quirks={"live-photo", "live-photo-motion"},
         )  # fmt: skip
-        still = self._keep(replace(still, live_partner=motion.path), self._sources[still.path])
-        motion = self._keep(replace(motion, live_partner=still.path), self._sources[motion.path])
+        still = self._keep(
+            replace(still, live_partner=motion.path, content_id=content_id),
+            self._sources[still.path],
+        )
+        motion = self._keep(
+            replace(motion, live_partner=still.path, content_id=content_id),
+            self._sources[motion.path],
+        )
         return still, motion
 
     def near_duplicate(

@@ -30,7 +30,7 @@ _READ_TAGS = [
     "DateTimeOriginal", "OffsetTimeOriginal", "CreateDate", "CreationDate",
     "GPSLatitude#", "GPSLongitude#", "GPSAltitude#",
     "Description", "ImageDescription", "Caption-Abstract",
-    "ImageSize#", "Duration#",
+    "ImageSize#", "Duration#", "ContentIdentifier",
 ]  # fmt: skip
 _EXIF_TIME = re.compile(
     r"^(?P<date>\d{4}:\d\d:\d\d) (?P<time>\d\d:\d\d:\d\d)"
@@ -62,6 +62,8 @@ class Embedded:
     width: int | None = None
     height: int | None = None
     duration: float | None = None
+    content_id: str | None = None
+    """Apple's Live Photo identifier, shared by a still and its motion clip."""
 
 
 @dataclass(frozen=True)
@@ -226,6 +228,7 @@ def embedded_from_tags(found: dict[str, Any]) -> Embedded:
         width=width,
         height=height,
         duration=_number(found.get("QuickTime:Duration")),
+        content_id=_first(found, "Apple:ContentIdentifier", "Keys:ContentIdentifier"),
     )
 
 
