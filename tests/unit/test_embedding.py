@@ -104,3 +104,25 @@ def test_the_thumbnail_stand_in_puts_bursts_close_and_other_scenes_far() -> None
 
     assert min(cosine(first, v) for v in (burst, blurred, darker)) > 0.95
     assert max(cosine(first, other) for other in others) < 0.8
+
+
+def test_the_clip_embedder_embeds_text_prompts_in_the_image_space() -> None:
+    embedder = ClipEmbedder(pretrained=None, device="cpu")
+
+    receipt, landscape = embedder.embed_texts(["a photo of a receipt", "a landscape"])
+
+    assert receipt.shape == (512,) == embedder.embed(synthetic_image(1)).shape
+    assert float(np.linalg.norm(receipt)) == pytest.approx(1.0, abs=1e-5)
+    assert not np.array_equal(receipt, landscape)
+    assert np.array_equal(embedder.embed_texts(["a photo of a receipt"])[0], receipt)
+
+
+def test_the_stand_in_embeds_text_deterministically_in_its_own_space() -> None:
+    embedder = ThumbnailEmbedder()
+
+    first, second = embedder.embed_texts(["a meme", "a receipt"])
+
+    assert first.shape == embedder.embed(synthetic_image(1)).shape
+    assert float(np.linalg.norm(first)) == pytest.approx(1.0, abs=1e-5)
+    assert np.array_equal(ThumbnailEmbedder().embed_texts(["a meme"])[0], first)
+    assert not np.array_equal(first, second)
