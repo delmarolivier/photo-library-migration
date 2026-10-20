@@ -24,21 +24,32 @@ Without Vision (Linux), groups are ranked on the other scores.
 **Keep the top two** (Delmar's decision). Ties go to the higher resolution, then iCloud, then
 the key, so the ranking is deterministic. The rest are *proposed* for "To Delete": the
 review confirms each group.
+
+**The stage** takes every photo with an embedding and a capture time (EXIF, else the Photos
+date, else the date ingest plans to write). Left out: Google edits and creations (as in
+dedupe), and photos proposed as another's duplicate (dedupe keeps one copy; best-shot ranks
+that one). Groups are ``best-shot`` groups with member roles ``keep`` and ``to-delete`` in rank
+order, each Live Photo still followed by its ``motion`` clip. Their details hold the scores
+used, each shot's score and parts, and the two kept. Stale groups are retired.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+import hashlib
+import json
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import cast
 
 import numpy as np
 
-from photomigrate.catalogue import Source
-from photomigrate.config import BestShotWeights
-from photomigrate.embedding import Vector
-from photomigrate.faces import Face
+from photomigrate.catalogue import Catalogue, CatalogueItem, Source
+from photomigrate.config import BestShotConfig, BestShotWeights
+from photomigrate.embedding import Vector, from_bytes
+from photomigrate.faces import Face, faces_from_json
 from photomigrate.quality import PhotoMetrics
+from photomigrate.runner import Action, JSONValue
 
 KEEP = 2
 """How many shots of each group are kept: Delmar's decision, not a setting."""
@@ -163,3 +174,122 @@ def rank(shots: Sequence[Shot], weights: BestShotWeights) -> Ranking:
         ranked.append(RankedShot(current, round(score, 4), parts))
     ranked.sort(key=lambda r: (-r.score, -r.shot.pixels, r.shot.source != "icloud", r.shot.key))
     return Ranking(ranked, used)
+
+
+# --- the stage -----------------------------------------------------------------------------
+
+_LEFT_OUT = frozenset({"edited", "google-creation"})
+
+
+def _taken(catalogue: Catalogue, item: CatalogueItem) -> datetime | None:
+    found = catalogue.date_candidates(cast(int, item.id))
+    for source in ("exif", "icloud"):
+        if source in found:
+            return found[source]
+    planned = json.loads(item.metadata_plan).get("taken")
+    return datetime.fromisoformat(planned) if planned else None
+
+
+def _shot(item: CatalogueItem, taken: datetime) -> Shot:
+    measured = json.loads(item.quality)
+    faces = faces_from_json(item.faces)
+    vector = from_bytes(cast(bytes, item.embedding))
+    norm = float(np.linalg.norm(vector))
+    return Shot(
+        id=cast(int, item.id),
+        source=item.source,
+        key=item.source_key,
+        taken=taken,
+        embedding=vector / norm if norm else vector,
+        metrics=PhotoMetrics.from_dict(measured) if measured else None,
+        faces=None if faces is None else tuple(faces),
+        aesthetic=json.loads(item.scores).get("overall"),
+        pixels=(item.width or 0) * (item.height or 0),
+    )
+
+
+def _name(source: Source, key: str) -> str:
+    return f"{source}:{key}"
+
+
+class BestShotStage:
+    """Propose ``best-shot`` groups: the top two kept, the rest for "To Delete"."""
+
+    name = "best-shot"
+
+    def __init__(self, config: BestShotConfig) -> None:
+        self.config = config
+
+    def _shots(self, catalogue: Catalogue) -> list[Shot]:
+        duplicates = {
+            item_id
+            for group in catalogue.groups("duplicate")
+            for item_id, role, _ in catalogue.group_members(group.id)
+            if role != "keeper"
+        }
+        shots = []
+        for item in catalogue.items():
+            if (
+                item.kind != "photo"
+                or item.embedding is None
+                or item.id in duplicates
+                or (item.source == "google" and _LEFT_OUT & item.flags)
+            ):
+                continue
+            taken = _taken(catalogue, item)
+            if taken is not None:
+                shots.append(_shot(item, taken))
+        return shots
+
+    def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        motions: dict[int, CatalogueItem] = {}
+        for pair in catalogue.groups("live-pair"):
+            roles = {role: item_id for item_id, role, _ in catalogue.group_members(pair.id)}
+            motions[roles["still"]] = catalogue.item(roles["motion"])
+        found = group_shots(
+            self._shots(catalogue),
+            window=timedelta(seconds=self.config.window_seconds),
+            min_similarity=self.config.min_similarity,
+        )
+        wanted = set()
+        for group in found:
+            ranking = rank(group, self.config.weights)
+            names = sorted(_name(s.source, s.key) for s in group)
+            key = "best-" + hashlib.sha256("|".join(names).encode()).hexdigest()[:16]
+            wanted.add(key)
+            members: list[JSONValue] = []
+            for position, ranked in enumerate(ranking.shots):
+                shot = ranked.shot
+                members.append([shot.source, shot.key, "keep" if position < KEEP else "to-delete"])
+                if shot.id in motions:
+                    motion = motions[shot.id]
+                    members.append([motion.source, motion.source_key, "motion"])
+            details: dict[str, JSONValue] = {
+                "used": list(ranking.used),
+                "keep": [_name(r.shot.source, r.shot.key) for r in ranking.keep],
+                "scores": {_name(r.shot.source, r.shot.key): r.score for r in ranking.shots},
+                "parts": {
+                    _name(r.shot.source, r.shot.key): cast(dict[str, JSONValue], r.parts)
+                    for r in ranking.shots
+                },
+                "members": members,
+            }
+            yield Action("propose-best-shot", key, details)
+        for stale in catalogue.groups("best-shot"):
+            if stale.key not in wanted:
+                yield Action("retire-best-shot", stale.key)
+
+    def apply(self, action: Action, catalogue: Catalogue) -> None:
+        if action.kind == "retire-best-shot":
+            catalogue.discard_group("best-shot", action.target)
+            return
+        details = dict(action.details)
+        listed = cast(list[list[str]], details.pop("members"))
+        group = catalogue.upsert_group("best-shot", action.target, details)
+        members = []
+        for rank_, (source, key, role) in enumerate(listed):
+            item_id = catalogue.item_for_key(cast(Source, source), key)
+            if item_id is None:
+                raise KeyError(f"{source}:{key} is no longer in the catalogue")
+            members.append((item_id, role, rank_))
+        catalogue.set_group_members(group, members)

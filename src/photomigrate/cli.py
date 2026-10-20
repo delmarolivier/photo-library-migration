@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 
 from photomigrate import __version__
+from photomigrate.analyse.best_shot import BestShotStage
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
 from photomigrate.analyse.edited import EditedVersionsStage
@@ -190,7 +191,8 @@ def analyse(
     ] = EditedPolicyChoice.pair,
 ) -> None:
     """Link edits to originals, propose duplicate groups (photos and videos) with keepers,
-    and flag quality problems with scores (thresholds from --config).
+    flag quality problems with scores (thresholds from --config), and group similar shots,
+    keeping the best two of each (window, similarity and weights from --config).
 
     Proposals only: the review decides.
     """
@@ -203,6 +205,7 @@ def analyse(
         ),
         VideoDedupeStage(VideoDedupeConfig(signature_max=signature_max)),
         QualityStage(settings.config.quality),
+        BestShotStage(settings.config.best_shot),
     )
     try:
         for stage in stages:
