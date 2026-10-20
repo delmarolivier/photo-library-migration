@@ -113,3 +113,10 @@ def test_the_clutter_threshold_can_be_raised_but_not_past_one(tmp_path: Path) ->
     assert load_config(write(tmp_path, "[clutter]\nmin_score = 0.7\n")).clutter.min_score == 0.7
     with pytest.raises(ConfigError, match=re.escape("'clutter.min_score' must be at most 1")):
         load_config(write(tmp_path, "[clutter]\nmin_score = 1.5\n"))
+
+
+def test_the_location_window_and_timeline_tolerance_can_be_set(tmp_path: Path) -> None:
+    config = load_config(write(tmp_path, "[location]\nwindow_minutes = 10\n"))
+
+    assert config.location.window_minutes == 10.0
+    assert config.location.timeline_tolerance_minutes == 15.0

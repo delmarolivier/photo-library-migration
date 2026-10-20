@@ -60,3 +60,13 @@ aesthetic = 0.15
 [clutter]
 # An item joins the queue when its best category scores at least this.
 min_score = 0.5
+
+# Location backfill (photomigrate analyse [--timeline Timeline.json]). Proposals only: a
+# location is written after the review approves it, with the keyword "location-inferred".
+
+[location]
+# A shot without GPS borrows from the same camera's located shots within this many minutes
+# (interpolated in time between one before and one after).
+window_minutes = 30.0
+# With a Timeline export: how far from the moment a path point may be, when no visit covers it.
+timeline_tolerance_minutes = 15.0

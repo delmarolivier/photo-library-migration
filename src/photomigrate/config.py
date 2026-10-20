@@ -97,10 +97,19 @@ class ClutterConfig:
 
 
 @dataclass(frozen=True)
+class LocationConfig:
+    window_minutes: float = 30.0
+    """A shot without GPS borrows from the same camera's shots within this long of it."""
+    timeline_tolerance_minutes: float = 15.0
+    """How far a Timeline path point may be from the moment, when no visit covers it."""
+
+
+@dataclass(frozen=True)
 class Config:
     quality: QualityConfig = field(default_factory=QualityConfig)
     best_shot: BestShotConfig = field(default_factory=BestShotConfig)
     clutter: ClutterConfig = field(default_factory=ClutterConfig)
+    location: LocationConfig = field(default_factory=LocationConfig)
 
 
 def load_config(path: Path | None) -> Config:

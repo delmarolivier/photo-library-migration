@@ -246,6 +246,18 @@ CREATE TABLE clutter (
 );
 """
 
+SCHEMA_V13 = """
+-- Location backfill: a proposed place for an item without GPS, how it was found, and the
+-- evidence. Written to the item only once the review approves it.
+CREATE TABLE inferred_locations (
+    item_id   INTEGER PRIMARY KEY REFERENCES items (id),
+    latitude  REAL NOT NULL,
+    longitude REAL NOT NULL,
+    method    TEXT NOT NULL,
+    evidence  TEXT NOT NULL DEFAULT '{}'
+);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -259,6 +271,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(10, "embeddings and faces", SCHEMA_V10),
     Migration(11, "cameras", SCHEMA_V11),
     Migration(12, "clutter", SCHEMA_V12),
+    Migration(13, "inferred locations", SCHEMA_V13),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -572,6 +585,42 @@ class Catalogue:
         )
         return {
             int(row["item_id"]): (row["category"], float(row["score"]), json.loads(row["evidence"]))
+            for row in rows
+        }
+
+    def set_inferred_location(
+        self,
+        item_id: int,
+        place: tuple[float, float] | None,
+        method: str = "",
+        evidence: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Propose ``place`` (latitude, longitude) for the item, or withdraw it (``None``)."""
+        if place is None:
+            self._conn.execute("DELETE FROM inferred_locations WHERE item_id = ?", (item_id,))
+            return
+        encoded = json.dumps(dict(evidence or {}), sort_keys=True)
+        self._conn.execute(
+            "INSERT INTO inferred_locations (item_id, latitude, longitude, method, evidence) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (item_id) DO UPDATE SET "
+            "latitude = excluded.latitude, longitude = excluded.longitude, "
+            "method = excluded.method, evidence = excluded.evidence "
+            "WHERE inferred_locations.latitude IS NOT excluded.latitude "
+            "OR inferred_locations.longitude IS NOT excluded.longitude "
+            "OR inferred_locations.method IS NOT excluded.method "
+            "OR inferred_locations.evidence IS NOT excluded.evidence",
+            (item_id, place[0], place[1], method, encoded),
+        )
+
+    def inferred_locations(self) -> dict[int, tuple[tuple[float, float], str, dict[str, Any]]]:
+        """item id -> ((latitude, longitude), method, evidence), for every proposal."""
+        rows = self._conn.execute("SELECT * FROM inferred_locations ORDER BY item_id")
+        return {
+            int(row["item_id"]): (
+                (float(row["latitude"]), float(row["longitude"])),
+                row["method"],
+                json.loads(row["evidence"]),
+            )
             for row in rows
         }
 
