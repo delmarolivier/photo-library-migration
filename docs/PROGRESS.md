@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M1-01] CLA-73 (repo bootstrap, tooling, CI, safety guard)
-- Next issue: [M1-02] CLA-74 (synthetic Google Takeout fixture generator)
+- Last completed issue: [M1-02] CLA-74 (synthetic Google Takeout fixture generator)
+- Next issue: [M1-03] CLA-75 (catalogue (SQLite), run framework and dry-run)
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Which personal Mac will do the real run? Development happens on the work MacBook (fixtures
@@ -16,6 +16,28 @@
     Takeout zips (the project's stated fallback). Not needed for M1.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M1-02
+- Issues worked: CLA-74 [M1-02].
+- What changed:
+  - `photomigrate.testing.media`: seeded synthetic images (JPEG, HEIC, PNG with EXIF date,
+    offset, camera and GPS), animated GIFs, and tiny bit-exact H.264 MP4/MOV via ffmpeg.
+  - `photomigrate.testing.takeout`: the naming rules, sidecar and album JSON, a
+    `TakeoutBuilder` with a ground-truth `TakeoutManifest`, deterministic multi-part zips, and
+    `standard_takeout()` with every quirk. Session fixture: `standard_takeout_zips`.
+  - tests/fixtures/README.md (quirk catalogue). CI linux now installs ffmpeg and exiftool.
+- Tests added / coverage: 219 tests in total, 100%.
+- Decisions made:
+  - The generator lives in `src/photomigrate/testing/`, not `tests/fixtures/` as in the
+    playbook layout, so mypy --strict and the coverage gate apply to it.
+  - Pillow and pillow-heif are runtime dependencies (the tech stack needs them later anyway).
+  - Name truncation is a documented model (docs/TAKEOUT_FORMAT.md, "Modelled rules"); the
+    real sample has no long names to confirm it.
+- Handoff notes for next session:
+  - Ingest tests should assert against `TakeoutManifest` (`metadata_sidecar()`, `parts`,
+    relations), not re-derive the naming rules.
+  - Calling `edited()` on a 47-character name makes the same name as the original, which
+    raises "already in this Takeout". Real behaviour is unknown, so it is not modelled.
+
 ### 2026-10-20: session 1
 - Issues worked: CLA-73 [M1-01].
 - What changed:

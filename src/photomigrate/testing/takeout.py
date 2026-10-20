@@ -17,7 +17,7 @@ import string
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -544,18 +544,21 @@ class TakeoutBuilder:
         stem = PurePosixPath(source.base).stem
         if kind == "MOTION":
             name = f"{stem}-MOTION.gif"
-            small = source.image.resize((96, 72))
-            data = encode_gif([ImageChops.offset(small, step * 3, 0) for step in range(6)])
+            frames = [
+                ImageChops.offset(source.image.resize((96, 72)), step * 3, 0) for step in range(6)
+            ]
+            picture, data = frames[0], encode_gif(frames)
         else:
             name = f"{stem}-{kind}.jpg"
-            data = encode_image(ImageEnhance.Color(source.image).enhance(1.6), "JPEG")
+            picture = ImageEnhance.Color(source.image).enhance(1.6)
+            data = encode_image(picture, "JPEG")
         creation = self._store(
-            item.folder, name, kind="photo", data=data, source=source,
+            item.folder, name, kind="photo", data=data, source=_Source(picture, None, "", 0),
             taken=item.taken, created=item.created + timedelta(hours=6), embedded=None,
             sidecar="supplemental", index=0, meta=_Meta(origin="auto"),
             quirks={"google-creation", f"google-creation-{kind.lower()}", "no-exif"},
         )  # fmt: skip
-        return self._keep(replace(creation, google_creation=kind), source)
+        return self._keep(replace(creation, google_creation=kind), self._sources[creation.path])
 
     # -- other files ----------------------------------------------------------------------
 
@@ -757,6 +760,126 @@ def _quirks(
     if meta.people:
         tags.add("people")
     return tags
+
+
+# --- The standard scenario ---------------------------------------------------------------
+
+_PARIS = timezone(timedelta(hours=2))
+_NICE = Geo(43.6970333, 7.266, 12.0)
+_TOKYO = Geo(35.6585805, 139.7454329, 40.0)
+_ALICE, _BOB = "Alice Example", "Bob Example"
+
+
+def _at(year: int, month: int, day: int, hour: int = 12, minute: int = 0) -> datetime:
+    return datetime(year, month, day, hour, minute, tzinfo=_PARIS)
+
+
+def standard_takeout(seed: int = 0) -> TakeoutBuilder:
+    """One export containing every known Takeout quirk once. See tests/fixtures/README.md."""
+    b = TakeoutBuilder(seed)
+    y19, y15 = "Photos from 2019", "Photos from 2015"
+
+    # Ordinary items, one per format, with location, people, favourite and unicode text.
+    beach = b.photo(
+        y19, "IMG_1001.JPG", taken=_at(2019, 7, 1, 12, 34), geo=_NICE, geo_in_exif=True,
+        description="Plage à Nice 🏖️", favorited=True, people=(_ALICE, _BOB),
+    )  # fmt: skip
+    b.photo(y19, "IMG_1002.JPG", taken=_at(2019, 7, 2, 9, 15), locale="en_US")
+    tower = b.photo(
+        y19, "IMG_1003.HEIC", taken=_at(2019, 7, 20, 18, 5), geo=_TOKYO,
+        description="東京タワー", people=(_ALICE,),
+    )  # fmt: skip
+
+    # The same item in three albums.
+    b.album("Été 2019", description="Vacances 🌞", comments=[(_BOB, _at(2019, 8, 1))])
+    b.album("Best of")
+    b.album("Family")
+    for album in ("Été 2019", "Best of", "Family"):
+        b.copy_to(beach, album)
+
+    # Duplicate names, edited copies and their variants.
+    b.photo(y19, "IMG_1004.JPG", taken=_at(2019, 7, 3, 10, 0))
+    b.edited(b.photo(y19, "IMG_1004.JPG", index=1, taken=_at(2019, 7, 3, 10, 1)))
+    b.edited(beach)
+    b.edited(b.photo(y19, "IMG_1005.JPG", taken=_at(2019, 7, 4, 11, 0)), extension=".jpg")
+    b.edited(
+        b.photo(y19, "Screenshot_20191105-123456_LongName_ABCD.jpg", taken=_at(2019, 11, 5),
+                camera=None)
+    )  # fmt: skip
+
+    # Long names, truncated differently for media and sidecars.
+    b.photo(
+        y19, "Screenshot_20191105-123456_A_Rather_Long_Application_Name.jpg",
+        taken=_at(2019, 11, 5, 12, 35), camera=None,
+    )  # fmt: skip
+
+    # An older export era: legacy sidecars, mobile uploads, US dates, localised edits.
+    legacy = b.photo(
+        y15, "IMG_0500.jpg", taken=_at(2015, 8, 12, 18, 30), sidecar="legacy", origin="mobile",
+        locale="en_US",
+    )  # fmt: skip
+    b.edited(legacy, lang="fr")
+    b.edited(
+        b.photo(y15, "IMG_0500.jpg", taken=_at(2015, 8, 12, 18, 31), sidecar="legacy", index=1),
+        lang="de",
+    )
+    b.photo(
+        y15, "DSC_20150812_183000_family_reunion_at_the_lake_house.jpg",
+        taken=_at(2015, 8, 12, 18, 40), sidecar="legacy", camera=("SONY", "DSC-RX100"),
+    )  # fmt: skip
+
+    # Live Photos split into still + motion.
+    b.live_photo(y19, "IMG_2001", taken=_at(2019, 7, 5, 16, 20))
+    b.live_photo(
+        y15, "IMG_2002", taken=_at(2015, 8, 13, 9, 0), still_ext=".JPG", motion_ext=".MP4",
+        motion_sidecar=True, sidecar="legacy",
+    )  # fmt: skip
+
+    # Videos, one without a sidecar, and a photo without one.
+    b.video(y19, "IMG_1010.MOV", taken=_at(2019, 7, 6, 14, 0))
+    b.video(y19, "VID_20190704_101010.mp4", taken=_at(2019, 7, 4, 10, 10), seconds=2.0)
+    b.video(y19, "IMG_1011.MOV", taken=_at(2019, 7, 7, 15, 0), sidecar=None)
+    b.photo(y19, "IMG_1006.JPG", taken=_at(2019, 7, 8, 8, 0), sidecar=None)
+
+    # Suspicious dates.
+    b.photo(
+        "Photos from 1970", "IMG_0001.JPG", taken=datetime(1970, 1, 1, tzinfo=UTC), camera=None,
+        exif_taken=None,
+    )  # fmt: skip
+    b.photo(
+        "Photos from 1980", "IMG_1007.JPG", taken=datetime(1980, 1, 1, tzinfo=UTC),
+        exif_taken=datetime(1980, 1, 1),
+    )  # fmt: skip
+    b.photo(
+        "Photos from 2000", "DSCN0001.JPG", taken=datetime(2000, 1, 1, tzinfo=UTC),
+        exif_taken=datetime(2000, 1, 1), camera=("NIKON", "COOLPIX L1"),
+    )  # fmt: skip
+    b.photo("Photos from 2037", "IMG_1008.JPG", taken=datetime(2037, 6, 1, 9, 0, tzinfo=UTC))
+    uploaded = _at(2019, 8, 20, 21, 0)
+    b.photo(
+        y19, "IMG_20120304_101112.jpg", taken=uploaded, created=uploaded, camera=None,
+        exif_taken=None,
+    )  # fmt: skip
+
+    # Near-duplicates: a messaging forward, a recompressed copy, a JPEG export of a HEIC.
+    b.near_duplicate(
+        beach, y19, "IMG-20190702-WA0003.jpg", kind="resized", strip_exif=True,
+        taken=_at(2019, 7, 2, 8, 0),
+    )  # fmt: skip
+    b.near_duplicate(beach, y19, "received_1001.jpeg", kind="recompressed")
+    b.album("Exports")
+    b.near_duplicate(tower, "Exports", "IMG_1003.jpg", kind="heic-vs-jpeg")
+
+    # Google-made creations, including an edited one.
+    b.google_creation(beach, "MOTION")
+    b.google_creation(beach, "MIX")
+    b.edited(b.google_creation(tower, "SMILE"))
+
+    # Another Google product in the same export.
+    b.other_product(
+        "Maps (your places)/Saved Places.json", b'{"type": "FeatureCollection", "features": []}'
+    )
+    return b
 
 
 _ARCHIVE_BROWSER_HTML = (

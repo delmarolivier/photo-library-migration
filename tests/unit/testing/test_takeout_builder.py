@@ -412,3 +412,19 @@ def test_manifest_lookup_quirks_and_json(builder: TakeoutBuilder) -> None:
     assert first["taken"] == "2019-07-01T12:34:56+02:00"
     assert sorted(first["quirks"]) == sorted(item.quirks)
     assert isinstance(manifest, TakeoutManifest)
+
+
+def test_unknown_extensions_are_rejected(builder: TakeoutBuilder) -> None:
+    with pytest.raises(ValueError, match="photo extension"):
+        builder.photo("Photos from 2019", "notes.txt", taken=TAKEN)
+    with pytest.raises(ValueError, match="video extension"):
+        builder.video("Photos from 2019", "clip.avi", taken=TAKEN)
+
+
+def test_copy_of_an_item_without_sidecar_has_none(builder: TakeoutBuilder) -> None:
+    original = builder.photo("Photos from 2019", "IMG_1234.JPG", taken=TAKEN, sidecar=None)
+
+    copy = builder.copy_to(original, "Family")
+
+    assert copy.sidecar is None
+    assert list(builder.files()) == ["Takeout/archive_browser.html", original.path, copy.path]

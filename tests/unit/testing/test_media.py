@@ -168,3 +168,12 @@ def test_missing_ffmpeg_is_reported_clearly(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_ffmpeg_is_on_path_for_this_test_run() -> None:
     assert shutil.which("ffmpeg"), "install ffmpeg (brew install ffmpeg / apt install ffmpeg)"
+
+
+def test_camera_exif_without_a_capture_time() -> None:
+    exif = open_image(
+        encode_image(synthetic_image(1), "JPEG", exif=Exif(make="Apple", model="iPhone 8"))
+    ).getexif()
+
+    assert exif[ExifTags.Base.Model] == "iPhone 8"
+    assert ExifTags.Base.DateTimeOriginal not in exif.get_ifd(ExifTags.IFD.Exif)
