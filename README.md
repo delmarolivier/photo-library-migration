@@ -33,7 +33,7 @@ Global options: `--catalogue PATH` (default `data/catalogue.sqlite`) and `--plan
 
 | Stage | What it does |
 |---|---|
-| `ingest` | Catalogue every item straight from the zips: match sidecars, hash, record dates and a metadata plan |
+| `ingest` | Catalogue every item straight from the zips: match sidecars, hash, record dates and a metadata plan, albums (copies become one item), favourites, captions, `People/` keywords |
 | `index` | Read-only index of the iCloud library |
 | `analyse` | Dedupe, Live Photos, edited versions, quality, best-shot, dates, clutter, location |
 | `review` | Local gallery on 127.0.0.1; decisions stored in the catalogue |

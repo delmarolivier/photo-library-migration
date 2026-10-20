@@ -10,7 +10,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -133,10 +133,56 @@ SCHEMA_V2 = """
 ALTER TABLE items ADD COLUMN metadata_plan TEXT NOT NULL DEFAULT '{}';
 """
 
+SCHEMA_V3 = """
+-- Albums, the items in them, extra Takeout locations of one item, and keywords.
+ALTER TABLE items ADD COLUMN google_url TEXT;
+CREATE TABLE albums (
+    id          INTEGER PRIMARY KEY,
+    source      TEXT NOT NULL CHECK (source IN ('google', 'icloud')),
+    source_key  TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    shared      INTEGER NOT NULL DEFAULT 0 CHECK (shared IN (0, 1)),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (source, source_key)
+);
+
+CREATE TABLE album_members (
+    album_id INTEGER NOT NULL REFERENCES albums (id),
+    item_id  INTEGER NOT NULL REFERENCES items (id),
+    PRIMARY KEY (album_id, item_id)
+);
+
+CREATE TABLE item_copies (
+    source     TEXT NOT NULL CHECK (source IN ('google', 'icloud')),
+    source_key TEXT NOT NULL,
+    item_id    INTEGER NOT NULL REFERENCES items (id),
+    PRIMARY KEY (source, source_key)
+);
+
+CREATE TABLE keywords (
+    item_id INTEGER NOT NULL REFERENCES items (id),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (item_id, keyword)
+);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
+    Migration(3, "albums, copies and keywords", SCHEMA_V3),
 )
+
+
+@dataclass(frozen=True)
+class Album:
+    id: int
+    source: Source
+    source_key: str
+    title: str
+    description: str
+    shared: bool
 
 
 def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] = MIGRATIONS) -> int:
@@ -182,6 +228,7 @@ class CatalogueItem:
     favorite: bool = False
     flags: frozenset[str] = field(default_factory=frozenset)
     metadata_plan: str = "{}"
+    google_url: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
@@ -335,6 +382,120 @@ class Catalogue:
             (item_id,),
         )
         return {row["source"]: datetime.fromisoformat(row["value"]) for row in rows}
+
+    def find_by_sha256(self, source: Source, sha256: str) -> list[CatalogueItem]:
+        rows = self._conn.execute(
+            "SELECT * FROM items WHERE source = ? AND sha256 = ? ORDER BY id", (source, sha256)
+        )
+        return [_from_row(row) for row in rows]
+
+    # -- albums, copies and keywords --------------------------------------------------------
+
+    def upsert_album(
+        self,
+        source: Source,
+        source_key: str,
+        title: str,
+        description: str = "",
+        shared: bool = False,
+    ) -> int:
+        now = self.now()
+        cursor = self._conn.execute(
+            "INSERT INTO albums (source, source_key, title, description, shared, created_at, "
+            "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source, source_key) DO UPDATE "
+            "SET title = excluded.title, description = excluded.description, "
+            "shared = excluded.shared, updated_at = excluded.updated_at "
+            "WHERE albums.title IS NOT excluded.title OR albums.description IS NOT "
+            "excluded.description OR albums.shared IS NOT excluded.shared RETURNING id",
+            (source, source_key, title, description, int(shared), now, now),
+        )
+        returned = cursor.fetchone()
+        if returned is None:
+            returned = self._conn.execute(
+                "SELECT id FROM albums WHERE source = ? AND source_key = ?", (source, source_key)
+            ).fetchone()
+        return int(returned["id"])
+
+    def albums(self) -> list[Album]:
+        rows = self._conn.execute("SELECT * FROM albums ORDER BY id")
+        return [
+            Album(
+                id=row["id"],
+                source=row["source"],
+                source_key=row["source_key"],
+                title=row["title"],
+                description=row["description"],
+                shared=bool(row["shared"]),
+            )
+            for row in rows
+        ]
+
+    def add_album_member(self, album_id: int, item_id: int) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO album_members (album_id, item_id) VALUES (?, ?)",
+            (album_id, item_id),
+        )
+
+    def album_members(self, album_id: int) -> list[int]:
+        rows = self._conn.execute(
+            "SELECT item_id FROM album_members WHERE album_id = ? ORDER BY item_id", (album_id,)
+        )
+        return [int(row["item_id"]) for row in rows]
+
+    def albums_of(self, item_id: int) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT a.title FROM albums a JOIN album_members m ON m.album_id = a.id "
+            "WHERE m.item_id = ? ORDER BY a.title",
+            (item_id,),
+        )
+        return [str(row["title"]) for row in rows]
+
+    def add_copy(self, source: Source, source_key: str, item_id: int) -> None:
+        """Record another Takeout location of ``item_id`` (an album folder's copy of it)."""
+        known = self._conn.execute(
+            "SELECT item_id FROM item_copies WHERE source = ? AND source_key = ?",
+            (source, source_key),
+        ).fetchone()
+        if known is not None and int(known["item_id"]) != item_id:
+            raise ValueError(f"{source_key} is already a copy of item {known['item_id']}")
+        self._conn.execute(
+            "INSERT OR IGNORE INTO item_copies (source, source_key, item_id) VALUES (?, ?, ?)",
+            (source, source_key, item_id),
+        )
+
+    def copies_of(self, item_id: int) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT source_key FROM item_copies WHERE item_id = ? ORDER BY source_key", (item_id,)
+        )
+        return [str(row["source_key"]) for row in rows]
+
+    def item_for_key(self, source: Source, source_key: str) -> int | None:
+        """The item a Takeout path belongs to, whether it is the item's own path or a copy."""
+        row = self._conn.execute(
+            "SELECT id FROM items WHERE source = ? AND source_key = ? UNION ALL "
+            "SELECT item_id FROM item_copies WHERE source = ? AND source_key = ?",
+            (source, source_key, source, source_key),
+        ).fetchone()
+        return None if row is None else int(row[0])
+
+    def set_keywords(self, item_id: int, prefix: str, keywords: Iterable[str]) -> None:
+        """Make the item's keywords under ``prefix`` exactly ``keywords`` (others untouched)."""
+        wanted = set(keywords)
+        if any(not keyword.startswith(prefix) for keyword in wanted):
+            raise ValueError(f"every keyword must start with the prefix {prefix!r}")
+        have = {k for k in self.keywords(item_id) if k.startswith(prefix)}
+        for keyword in sorted(have - wanted):
+            self._conn.execute(
+                "DELETE FROM keywords WHERE item_id = ? AND keyword = ?", (item_id, keyword)
+            )
+        for keyword in sorted(wanted - have):
+            self._conn.execute(
+                "INSERT INTO keywords (item_id, keyword) VALUES (?, ?)", (item_id, keyword)
+            )
+
+    def keywords(self, item_id: int) -> set[str]:
+        rows = self._conn.execute("SELECT keyword FROM keywords WHERE item_id = ?", (item_id,))
+        return {str(row["keyword"]) for row in rows}
 
     # -- stage runs and the action log ----------------------------------------------------------
 
