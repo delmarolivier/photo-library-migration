@@ -510,3 +510,38 @@ def test_items_can_be_fetched_by_id(cat: Catalogue) -> None:
     assert cat.item(item_id) == PHOTO.with_id(item_id)
     with pytest.raises(KeyError):
         cat.item(item_id + 1)
+
+
+# --- v8: edit pairs ------------------------------------------------------------------------------
+
+
+def test_v8_upgrade_keeps_groups_and_members_and_allows_edit_pairs(tmp_path: Path) -> None:
+    path = tmp_path / "v7.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    conn.execute("PRAGMA foreign_keys = ON")
+    migrate(conn, MIGRATIONS[:7])
+    conn.execute(
+        "INSERT INTO items (id, source, source_key, kind, created_at, updated_at)"
+        " VALUES (1, 'google', 'a', 'photo', 't', 't')"
+    )
+    conn.execute("INSERT INTO groups (id, kind, key, created_at) VALUES (5, 'live-pair', 'k', 't')")
+    conn.execute(
+        "INSERT INTO group_members (group_id, item_id, role, rank) VALUES (5, 1, 'still', 0)"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        (live,) = catalogue.groups("live-pair")
+        assert (live.id, live.key) == (5, "k")
+        assert catalogue.group_members(5) == [(1, "still", 0)]
+        pair = catalogue.upsert_group("edit-pair", "a", {"policy": "pair"})
+        assert catalogue.groups("edit-pair")[0].id == pair
+
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO group_members (group_id, item_id) VALUES (999, 1)")
+
+
+def test_migrations_leave_foreign_keys_on(cat: Catalogue) -> None:
+    assert cat._conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
