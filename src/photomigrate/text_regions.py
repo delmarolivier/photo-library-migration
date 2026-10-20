@@ -2,7 +2,8 @@
 
 Ingest and index detect text once, from the picture already decoded for hashing, with
 Vision's ``VNDetectTextRectanglesRequest`` (it finds text without reading it), and store a
-summary as JSON (``items.text``; ``NULL`` means not measured):
+summary as JSON (``items.text``; ``NULL`` means not measured). Boxes taller than 30% of the
+picture are not lines of text and are left out:
 
 * ``regions``: how many text regions;
 * ``coverage``: the share of the picture they cover (capped at 1);
@@ -26,6 +27,9 @@ from PIL import Image
 from photomigrate.faces import Box, box_of, vision_data
 
 _BAND = 0.3
+_TALLEST_LINE = 0.3
+"""No line of text is taller than this share of the picture. Vision sometimes boxes a
+textured scene that way (on the real sample: one box 57 to 79% of the height)."""
 
 
 @dataclass(frozen=True)
@@ -43,7 +47,9 @@ class TextReader(Protocol):
 
 
 def summarise(boxes: Sequence[Box]) -> TextSummary:
-    """Vision's text boxes (fractions of the picture, origin bottom-left) in four numbers."""
+    """Vision's text boxes (fractions of the picture, origin bottom-left) in four numbers.
+    Boxes taller than any line of text are left out."""
+    boxes = [box for box in boxes if box[3] <= _TALLEST_LINE]
     if not boxes:
         return TextSummary(regions=0, coverage=0.0, tallest=0.0, banded=0.0)
     banded = sum(1 for _, y, _, h in boxes if y + h / 2 < _BAND or y + h / 2 > 1 - _BAND)

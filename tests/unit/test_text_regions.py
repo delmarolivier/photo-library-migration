@@ -28,7 +28,9 @@ def test_a_summary_counts_regions_their_area_their_height_and_where_they_sit() -
 
 
 def test_coverage_never_exceeds_the_whole_picture() -> None:
-    assert summarise([(0, 0, 1, 1), (0, 0, 1, 1)]).coverage == 1.0
+    overlapping = [(0.0, 0.0, 1.0, 0.25)] * 12
+
+    assert summarise(overlapping).coverage == 1.0
 
 
 def test_summaries_round_trip_through_json_and_none_means_not_measured() -> None:
@@ -57,3 +59,11 @@ def test_there_is_no_text_reader_without_pyobjc_vision(monkeypatch: pytest.Monke
     monkeypatch.setattr(builtins, "__import__", without_vision)
 
     assert text_regions.text_reader() is None
+
+
+def test_boxes_taller_than_any_line_of_text_are_not_text() -> None:
+    texture = (0.1, 0.1, 0.8, 0.7)  # Vision sometimes boxes a textured scene
+    line = (0.1, 0.5, 0.5, 0.05)
+
+    assert summarise([texture]) == summarise([])
+    assert summarise([texture, line]) == summarise([line])

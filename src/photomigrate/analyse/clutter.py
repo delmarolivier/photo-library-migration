@@ -12,9 +12,11 @@ categories a camera does not make:
   ingest: sidecar origin AUTO, 1.0), or names ending ``-MOTION``, ``-MIX``, ``-SMILE``,
   ``-ANIMATION``, ``-COLLAGE`` or ``-EFFECTS`` (0.9). Never imported automatically (Delmar).
 * ``screenshot``: Photos says so (0.95), a screenshot name in several languages (0.8), a
-  device screen size (0.5), PNG (0.3), no camera and no file date (0.2). A camera: times 0.25.
-* ``document`` (receipts, scans, letters): Vision's text regions (0.7 at 12 or more), the text's
-  coverage (0.5 at 20%), white paper with text (0.3), or without Vision, the open_clip
+  photo the size of a device screen (0.45: never enough alone), PNG (0.3), no camera and no
+  file date (0.2). A camera: times 0.25.
+* ``document`` (receipts, scans, letters): Vision's text regions (0.7 at 12 or more), with 3 or
+  more regions the text's coverage (0.5 at 20%) and white paper (0.3), or without Vision, the
+  open_clip
   zero-shot label (0.9 times its probability). No camera adds 0.15, but only to other evidence,
   so a missing camera never makes a document, and a street sign in a camera photo stays a
   photo.
@@ -157,8 +159,8 @@ def _screenshot(clues: Clues) -> Scored:
         evidence["photos-screenshot"] = 0.95
     if _SCREENSHOT_NAME.search(clues.name):
         evidence["name"] = 0.8
-    if _sides(clues) in SCREEN_SIZES:
-        evidence["screen-size"] = 0.5
+    if clues.kind == "photo" and _sides(clues) in SCREEN_SIZES:
+        evidence["screen-size"] = 0.45
     if PurePosixPath(clues.name).suffix.lower() == ".png":
         evidence["png"] = 0.3
     if _stripped(clues):
@@ -172,9 +174,10 @@ def _document(clues: Clues) -> Scored:
     text = clues.text
     if text is not None and text.regions:
         evidence["text-regions"] = round(0.7 * min(1.0, text.regions / 12), 4)
-        evidence["text-coverage"] = round(0.5 * min(1.0, text.coverage / 0.2), 4)
-        if text.regions >= 3 and (clues.bright_fraction or 0) >= 0.4:
-            evidence["paper"] = 0.3
+        if text.regions >= 3:  # a page is many lines, not one big sign
+            evidence["text-coverage"] = round(0.5 * min(1.0, text.coverage / 0.2), 4)
+            if (clues.bright_fraction or 0) >= 0.4:
+                evidence["paper"] = 0.3
     elif text is None and clues.labels and clues.labels.get("document"):
         evidence["zero-shot"] = round(0.9 * clues.labels["document"], 4)
     if _stripped(clues) and any(weight >= 0.2 for weight in evidence.values()):

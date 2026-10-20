@@ -246,3 +246,21 @@ def test_zero_shot_labels_follow_the_nearest_prompts_and_sum_to_one() -> None:
     assert max(labels, key=lambda k: labels[k]) == "document"
     zero_shot.labels(np.array([0, 0, 0, 1], dtype=np.float32))
     assert prompts.calls == 1, "the prompts are embedded once"
+
+
+def test_one_big_text_region_is_not_a_document() -> None:
+    poster = TextSummary(regions=1, coverage=0.25, tallest=0.25, banded=0.0)
+
+    assert category(clues("IMG_4001.JPG", text=poster)) is None
+    assert "text-coverage" not in scores(clues("IMG_4001.JPG", text=poster))["document"][1]
+
+
+def test_a_camera_video_in_full_hd_is_not_a_screenshot() -> None:
+    video = clues("IMG_0001.MOV", camera=None, dated=False, size=(1920, 1080), kind="video")
+
+    assert category(video) is None
+    assert "screen-size" not in scores(video)["screenshot"][1]
+
+
+def test_a_screen_size_alone_is_not_enough() -> None:
+    assert category(clues("IMG_0042.JPG", camera=None, dated=True, size=(1170, 2532))) is None
