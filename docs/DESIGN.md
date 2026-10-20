@@ -2,7 +2,44 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
-## Safety rails (M1-01)
+## Catalogue and stage runner (M1-03)
+
+### Catalogue (`photomigrate.catalogue`)
+
+SQLite at `data/catalogue.sqlite` (gitignored). The schema version is `PRAGMA user_version`.
+`MIGRATIONS` is an ordered tuple numbered 1, 2, 3…, and each migration runs in a single
+transaction that also bumps the version. A catalogue newer than the code is refused.
+Add a migration for any schema change, and never edit a shipped one.
+
+Tables (v1):
+
+| Table | Holds |
+|---|---|
+| `items` | one row per Google or iCloud item, identified by `(source, source_key)` (the Takeout path or Photos UUID): paths, sha256, perceptual hashes, size, duration, GPS, title, description, favourite, flags (a JSON array) |
+| `date_candidates` | one value per `(item, source)`. Sources: `exif`, `quicktime`, `sidecar-taken`, `sidecar-created`, `filename`, `mtime`, `icloud`, `user`. Naive ISO values mean local time with an unknown offset. |
+| `groups`, `group_members` | `duplicate`, `best-shot`, `date-batch`, `live-pair` groups, with a member role and rank |
+| `decisions` | the user's answers per item or group and kind (import, keep, date…) |
+| `stage_runs`, `actions` | the action log: every applied run and each action's key, status and error |
+
+Writes are idempotent. Upserts change a row, and its `updated_at`, only when a value actually
+differs.
+
+### Runner (`photomigrate.runner`)
+
+A stage implements `plan(catalogue) -> Iterable[Action]`, which writes nothing, and
+`apply(action, catalogue)`, which must be idempotent. `run_stage`:
+
+- **dry run** (the default): plans against `Catalogue.snapshot()`, an in-memory copy (the file is
+  opened read-only, or the catalogue starts empty if there is no file), then saves the plan to
+  `data/plans/<stage>-<time>-dry-run.json`. That plan file is the only side effect.
+- **`--apply`**: skips actions already applied by earlier runs (matched by `Action.key`, a hash
+  of kind, target and details, so a changed input yields a new key). It applies each remaining
+  action in its own transaction together with its log entry, and stops at the first failure.
+  The next run resumes from the failed action. When nothing is pending, nothing is written,
+  not even a run record.
+
+`render_result` prints a summary table, the first 50 actions and the next step.
+
 
 ### Media guard (`photomigrate.safety.PathGuard`, CLAUDE.md rule 4)
 
