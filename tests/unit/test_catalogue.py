@@ -322,3 +322,30 @@ def test_open_rejects_naive_clock_values(path: Path) -> None:
         pytest.raises(ValueError, match="timezone"),
     ):
         catalogue.upsert_item(PHOTO)
+
+
+def test_v2_upgrades_a_v1_catalogue_and_adds_metadata_plans(tmp_path: Path) -> None:
+    path = tmp_path / "v1.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:1])
+    conn.execute(
+        "INSERT INTO items (source, source_key, kind, created_at, updated_at)"
+        " VALUES ('google', 'Takeout/x.jpg', 'photo', 't', 't')"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        item = catalogue.get_item("google", "Takeout/x.jpg")
+
+    assert item is not None
+    assert item.metadata_plan == "{}"
+
+
+def test_metadata_plans_are_stored_with_the_item(cat: Catalogue) -> None:
+    plan = '{"description": "Plage", "taken": "2019-07-01T12:34:56+02:00"}'
+
+    cat.upsert_item(PHOTO.replace(metadata_plan=plan))
+
+    stored = cat.get_item("google", PHOTO.source_key)
+    assert stored is not None
+    assert stored.metadata_plan == plan
