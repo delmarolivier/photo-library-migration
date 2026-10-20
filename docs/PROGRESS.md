@@ -1,9 +1,9 @@
 # Progress log
 
 ## Current state
-- Milestone: 1. Prep and ingest
-- Last completed issue: [M2-04] CLA-82 (edited versions). Milestone 2's code is complete.
-- Next issue: [M3-01] CLA-83 (quality scoring).
+- Milestone: 3. Quality and review
+- Last completed issue: [M3-01] CLA-83 (quality scoring).
+- Next issue: [M3-02] CLA-84 (best-shot selection).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
@@ -15,6 +15,19 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M3-01
+- `photomigrate.quality` measures photos (sharpness, exposure, contrast, size) and videos
+  (brightness, motion) at ingest and index: one decode per photo for hashes and metrics, one
+  ffmpeg pass per video for signature and metrics. Catalogue v9: `items.quality` and
+  `quality_flags`.
+- `analyse.quality` flags items with scores from 0 to 1; thresholds come from the new
+  `--config` TOML file (`photomigrate.example.toml`).
+- Runner fix: an action undone by a later run is applied again (a setting changed, then
+  changed back, used to leave the middle setting in place).
+- Real sample: 3,308 items measured. 29 photos flagged `blurry` (0.9%), nothing else. Dedupe
+  results are unchanged by the single decode.
+- Tests: 720, 100%.
+
 ### 2026-10-20: session 1 (continued): dedupe precision from a pixel check
 - Delmar asked for a real image comparison (and not to trust filenames). Every proposed pair
   on the sample was decoded and compared by pixels.

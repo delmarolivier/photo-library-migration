@@ -2,6 +2,49 @@
 
 Takeout structure and quirks: see [TAKEOUT_FORMAT.md](TAKEOUT_FORMAT.md).
 
+## Quality flags (M3-01)
+
+Ingest and index measure every item once, while the file is at hand (`photomigrate.quality`,
+stored as JSON in `items.quality`, catalogue v9). Then `photomigrate analyse` runs `quality`
+(`analyse.quality`), which only compares the measurements with the thresholds, so trying new
+thresholds is quick.
+
+- **Photos** are decoded once for both their hashes and their metrics (`hashing.open_picture`:
+  upright, long side at most 1024 px; JPEGs are decoded at reduced size).
+  - `sharpness`: the variance of the Laplacian. Low means blurry.
+  - `brightness`: the mean luminance. `dark_fraction` and `bright_fraction`: the share of
+    pixels below 16 and above 240.
+  - `contrast`: the luminance standard deviation. Near 0 is a flat frame.
+  - `megapixels` and `short_side`, from the full upright size.
+- **Videos** reuse the 8 frames sampled for the signature (one ffmpeg pass): mean
+  `brightness`, and `motion`, the mean change between consecutive samples.
+- **Flags**, with the default thresholds (`photomigrate.example.toml`):
+
+  | Flag | When |
+  |---|---|
+  | `blurry` | sharpness < 30 |
+  | `low-resolution` | < 0.3 MP |
+  | `under-exposed` | brightness < 40, or more than half the pixels near black |
+  | `over-exposed` | brightness > 215, or more than half the pixels near white |
+  | `accidental` | contrast < 10 (pocket shot, black frame, lens cap) |
+  | `short-clip` | < 1.5 s, never a Live Photo motion half (paired or `unpaired-motion`) |
+  | `black-video` | brightness < 12 |
+  | `static-video` | motion < 2 |
+  | `tiny-video` | short side < 240 px |
+
+- **Scores:** each flag has a score from 0 (just past the threshold) to 1 (as bad as it gets),
+  in the `quality_flags` table. A re-run with other thresholds replaces an item's flags.
+  Nothing is decided: the review gallery shows the flags, and best-shot (M3-02) can use them.
+- **Config:** `--config FILE` (TOML). Unknown sections or settings, wrong types and negative
+  values are errors, so a typo never silently falls back to a default.
+- **On the real sample** (3,282 photos, 26 videos):
+  - Sharpness spans 15 to 6,000 (median 170). The usual default of 100 would flag a quarter of
+    the photos; 30 flags 29 (0.9%).
+  - Nothing else is flagged. Mean brightness stays between 44 and 175, contrast is at least 30,
+    the smallest photo is 640x480, and every video is 6.6 s or longer, with plenty of motion.
+  - Decoding once for hashes and metrics left dedupe unchanged: the same 258 duplicate groups
+    and 1,562 edit pairs, member for member.
+
 ## Edited versions (M2-04)
 
 `photomigrate analyse` first runs `edited-versions` (`analyse.edited`). It links every Google
@@ -225,6 +268,10 @@ A stage implements `plan(catalogue) -> Iterable[Action]`, which writes nothing, 
   action in its own transaction together with its log entry, and stops at the first failure.
   The next run resumes from the failed action. When nothing is pending, nothing is written,
   not even a run record.
+- **Undone actions:** an applied action is done only if no action on the same target that the
+  stage no longer plans was applied after it. So a setting changed and then changed back
+  (`--edited-policy pair`, `original-only`, `pair`) re-applies the first action instead of
+  leaving the middle setting in place.
 
 `render_result` prints a summary table, the first 50 actions and the next step.
 
