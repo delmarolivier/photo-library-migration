@@ -177,7 +177,7 @@ class Takeout:
                 os.chmod(staged, 0o444)
                 stamp = entry.modified.timestamp()
                 os.utime(staged, (stamp, stamp))
-                os.replace(staged, target)
+                os.replace(staged, target)  # no-delete-check: allow (our staged copy)
                 written += 1
         return written
 

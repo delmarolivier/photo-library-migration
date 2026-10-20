@@ -176,3 +176,34 @@ def test_photoscript_sets_details_dates_places_and_albums(
     assert stored["date"].tzinfo is None, "AppleScript dates are local wall-clock time"
     assert stored["location"] == (48.85, 2.35)
     assert photos.albums["Holiday"].added == ["U1"]
+
+
+def test_a_disposable_library_takes_an_asset_out_of_an_album_but_keeps_it(tmp_path: Path) -> None:
+    photos = DisposableLibrary(tmp_path / "Test.photoslibrary")
+    photos.add_existing("U1", "a.jpg")
+    photos.add_to_album("To Delete", ["U1"])
+
+    photos.remove_from_album("To Delete", ["U1"])
+    photos.remove_from_album("Never made", ["U1"])
+
+    assert photos.albums()["To Delete"] == []
+    assert "U1" in photos.assets()
+
+
+def test_photoscript_takes_assets_out_of_an_album(photos: FakePhotos, tmp_path: Path) -> None:
+    library = PhotoscriptLibrary(tmp_path / "Real.photoslibrary")
+    library.add_to_album("To Delete", ["U1", "U2"])
+    removed: list[str] = []
+    photos.albums["To Delete"].remove = lambda found: removed.extend(p.uuid for p in found)  # type: ignore[attr-defined]
+
+    library.remove_from_album("To Delete", ["U1"])
+
+    assert removed == ["U1"]
+
+
+def test_photoscript_takes_nothing_out_of_an_album_that_does_not_exist(
+    photos: FakePhotos, tmp_path: Path
+) -> None:
+    PhotoscriptLibrary(tmp_path / "Real.photoslibrary").remove_from_album("Never made", ["U1"])
+
+    assert photos.albums == {}

@@ -735,3 +735,16 @@ def test_v14_records_imports(cat: Catalogue, path: Path) -> None:
 
     assert dump(path) == before
     assert cat.imports() == {item_id: ("UUID-1", "ab" * 32, "batch-000001")}
+
+
+def test_v15_remembers_what_is_staged_for_to_delete(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO)
+
+    cat.set_staged(item_id, "clutter")
+    before = dump(path)
+    cat.set_staged(item_id, "clutter")
+
+    assert dump(path) == before
+    assert cat.staged() == {item_id: "clutter"}
+    cat.set_staged(item_id, None)
+    assert cat.staged() == {}

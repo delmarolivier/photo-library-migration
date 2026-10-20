@@ -67,6 +67,12 @@ class DisposableLibrary:
         members.extend(u for u in uuids_ if u not in members)
         self._save(state)
 
+    def remove_from_album(self, album: str, uuids_: Sequence[str]) -> None:
+        state = self._load()
+        if album in state["albums"]:
+            state["albums"][album] = [u for u in state["albums"][album] if u not in uuids_]
+        self._save(state)
+
     def set_details(
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]
     ) -> None:

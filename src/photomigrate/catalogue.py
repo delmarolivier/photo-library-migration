@@ -270,6 +270,15 @@ CREATE TABLE imports (
 );
 """
 
+SCHEMA_V15 = """
+-- The existing iCloud items in the "To Delete" album, and why. Delmar deletes them by hand.
+CREATE TABLE staged (
+    item_id   INTEGER PRIMARY KEY REFERENCES items (id),
+    reason    TEXT NOT NULL,
+    staged_at TEXT NOT NULL
+);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -285,6 +294,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(12, "clutter", SCHEMA_V12),
     Migration(13, "inferred locations", SCHEMA_V13),
     Migration(14, "imports", SCHEMA_V14),
+    Migration(15, "staged for To Delete", SCHEMA_V15),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -652,6 +662,22 @@ class Catalogue:
             int(row["item_id"]): (row["photos_uuid"], row["working_sha256"], row["batch"])
             for row in rows
         }
+
+    def set_staged(self, item_id: int, reason: str | None) -> None:
+        """Record that the item is in the "To Delete" album, and why, or no longer (``None``)."""
+        if reason is None:
+            self._conn.execute("DELETE FROM staged WHERE item_id = ?", (item_id,))
+            return
+        self._conn.execute(
+            "INSERT INTO staged (item_id, reason, staged_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (item_id) DO UPDATE SET reason = excluded.reason "
+            "WHERE staged.reason IS NOT excluded.reason",
+            (item_id, reason, self.now()),
+        )
+
+    def staged(self) -> dict[int, str]:
+        rows = self._conn.execute("SELECT item_id, reason FROM staged ORDER BY item_id")
+        return {int(row["item_id"]): str(row["reason"]) for row in rows}
 
     # -- groups -----------------------------------------------------------------------------
 

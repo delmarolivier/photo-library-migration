@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M4-01] CLA-89 (importer).
-- Next issue: [M4-02] CLA-90 ("To Delete" staging, no-delete guarantee).
+- Last completed issue: [M4-02] CLA-90 ("To Delete" staging, no-delete guarantee).
+- Next issue: [M4-03] CLA-91 (reconciliation report).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
@@ -23,6 +23,15 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-21: session 1 (continued): M4-02
+- `import` stages and unstages "To Delete" so the album is exactly the rejected iCloud items
+  (catalogue v15 `staged`); `PhotosLibrary.remove_from_album` (album membership only).
+- `safety.NoDeleteGuard`, used by `import --apply` on the library (the Takeout stays under
+  `ReadOnlyGuard`). The static check now catches `getattr` lookups, Photos delete scripts,
+  and moves/renames (allowed only with a reason comment).
+- A full-pipeline test with every delete API rigged to fail on media.
+- Tests: 1,138, 100%.
+
 ### 2026-10-20: session 1 (continued): M4-01
 - `importer.outcomes`: every Google item is import, duplicate-of-existing, rejected-by-user,
   follows (Live clip) or pending (an unanswered question); `to_delete` lists the rejected

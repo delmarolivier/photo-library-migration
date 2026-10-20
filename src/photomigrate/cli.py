@@ -308,8 +308,9 @@ def import_(
     apply: Annotated[bool, typer.Option("--apply", help="Import (else a dry run).")] = False,
 ) -> None:
     """Import approved Google items into the album "From Google" with their albums,
-    favourites, captions and keywords, and apply answered dates and places to existing
-    iCloud items. A dry run unless --apply; --apply needs a confirmed backup and a yes."""
+    favourites, captions and keywords; apply answered dates and places to existing iCloud
+    items; put the iCloud items the review rejected in "To Delete" (never deleted here).
+    A dry run unless --apply; --apply needs a confirmed backup and a yes."""
     settings: Settings = ctx.obj
     zone = _zone(timezone)
     console = Console()

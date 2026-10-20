@@ -135,3 +135,64 @@ def test_the_dispatcher_consults_read_only_guards(
 
     with pytest.raises(ForbiddenPathError):
         safety._audit("photomigrate.write", (str(DB),))
+
+
+# --- the no-delete guard -------------------------------------------------------------------
+
+
+def test_the_no_delete_guard_refuses_removals_and_moves_inside_its_roots(tmp_path: Path) -> None:
+    from photomigrate.safety import NoDeleteGuard
+
+    media = tmp_path / "media"
+    (media / "album").mkdir(parents=True)
+    photo = media / "album" / "a.jpg"
+    photo.write_bytes(b"jpg")
+    outside = tmp_path / "scratch.txt"
+
+    with NoDeleteGuard([media, tmp_path / "other"]) as guard:
+        for attempt in (
+            photo.unlink,
+            lambda: os.remove(photo),
+            lambda: (media / "album").rmdir(),
+            lambda: shutil.rmtree(media / "album"),
+            lambda: os.rename(photo, outside),
+            lambda: shutil.move(photo, outside),
+            lambda: os.replace(outside, photo),
+        ):
+            if not outside.exists():
+                outside.write_bytes(b"x")
+            with pytest.raises(ForbiddenPathError, match="no-delete guard"):
+                attempt()
+        (media / "album" / "new.jpg").write_bytes(b"added")  # adding is fine
+        outside.unlink()  # outside the roots is fine
+
+    assert photo.read_bytes() == b"jpg"
+    assert len(guard.violations) == 7
+
+
+def test_the_no_delete_guard_is_off_once_left(tmp_path: Path) -> None:
+    from photomigrate.safety import NoDeleteGuard
+
+    target = tmp_path / "a.txt"
+    target.write_bytes(b"x")
+    with NoDeleteGuard([tmp_path]):
+        pass
+
+    target.unlink()
+    assert not target.exists()
+
+
+def test_the_no_delete_guard_judges_each_kind_of_event(tmp_path: Path) -> None:
+    from photomigrate.safety import NoDeleteGuard
+
+    guard = NoDeleteGuard([tmp_path / "media"])
+    inside, outside = str(tmp_path / "media" / "a.jpg"), str(tmp_path / "b.jpg")
+
+    for event, args in [("os.remove", (inside, None)), ("shutil.rmtree", (inside, None, None)),
+                        ("os.rename", (outside, inside, None, None)),
+                        ("shutil.move", (inside, outside))]:  # fmt: skip
+        with pytest.raises(ForbiddenPathError):
+            guard.check(event, args)
+    guard.check("os.remove", (outside, None))
+    guard.check("open", (inside, "wb", 0))
+    assert len(guard.violations) == 4
