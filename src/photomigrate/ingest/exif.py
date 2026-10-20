@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -36,6 +36,9 @@ _EXIF_TIME = re.compile(
     r"^(?P<date>\d{4}:\d\d:\d\d) (?P<time>\d\d:\d\d:\d\d)"
     r"(?P<fraction>\.\d+)?(?P<offset>[+-]\d\d:\d\d|Z)?$"
 )
+
+
+_QUICKTIME_EPOCH_YEAR = 1904
 
 
 class MetadataError(RuntimeError):
@@ -116,6 +119,15 @@ def parse_exif_time(value: object) -> datetime | None:
         return None
 
 
+def _quicktime_time(value: object) -> datetime | None:
+    """QuickTime dates count seconds from 1904; some exiftool versions show unset ones as 1904."""
+    when = parse_exif_time(value)
+    if when is None:
+        return None
+    utc_year = when.year if when.tzinfo is None else when.astimezone(UTC).year
+    return None if min(when.year, utc_year) <= _QUICKTIME_EPOCH_YEAR else when
+
+
 def _local(when: datetime) -> str:
     return f"{when:%Y:%m:%d %H:%M:%S}"
 
@@ -190,8 +202,8 @@ def embedded_from_tags(found: dict[str, Any]) -> Embedded:
     taken = (
         exif_time
         or parse_exif_time(found.get("XMP-exif:DateTimeOriginal"))
-        or parse_exif_time(found.get("Keys:CreationDate"))
-        or parse_exif_time(found.get("QuickTime:CreateDate"))
+        or _quicktime_time(found.get("Keys:CreationDate"))
+        or _quicktime_time(found.get("QuickTime:CreateDate"))
     )
     width = height = None
     size = str(found.get("Composite:ImageSize") or "")
