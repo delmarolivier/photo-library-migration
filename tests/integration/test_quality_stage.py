@@ -6,17 +6,17 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from photomigrate.analyse.quality import QualityStage
-from photomigrate.config import Config, load_config
 from PIL import ImageEnhance, ImageFilter
 from typer.testing import CliRunner
 
+from photomigrate.analyse.quality import QualityStage
 from photomigrate.catalogue import Catalogue
 from photomigrate.cli import app
+from photomigrate.config import Config, load_config
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.runner import RunResult, run_stage
-from photomigrate.testing.media import synthetic_photo, video_frames
+from photomigrate.testing.media import scene_frames, synthetic_photo
 from photomigrate.testing.takeout import TakeoutBuilder
 
 FOLDER = "Photos from 2021"
@@ -33,9 +33,7 @@ def catalogue_path(tmp_path: Path) -> Path:
     builder.photo(
         FOLDER, "dark.jpg", taken=WHEN, image=ImageEnhance.Brightness(sharp).enhance(0.25)
     )
-    builder.video(
-        FOLDER, "walk.mp4", taken=WHEN, frames=video_frames(3, seconds=3.0, size=(320, 240))
-    )
+    builder.video(FOLDER, "walk.mp4", taken=WHEN, frames=scene_frames(3, seconds=3.0))
     builder.video(FOLDER, "blip.mp4", taken=WHEN, seconds=0.8)
     builder.live_photo(FOLDER, "IMG_0001", taken=WHEN)
     builder.write_zips(tmp_path / "takeout")

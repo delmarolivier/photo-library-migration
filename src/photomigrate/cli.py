@@ -13,6 +13,8 @@ from photomigrate import __version__
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
 from photomigrate.analyse.edited import EditedVersionsStage
+from photomigrate.analyse.quality import QualityStage
+from photomigrate.config import Config, ConfigError, load_config
 from photomigrate.index.icloud import IndexStage, LibraryError
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.policy import local_zone
@@ -36,6 +38,7 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 class Settings:
     catalogue: Path
     plan_dir: Path
+    config: Config
 
 
 def _print_version(value: bool) -> None:
@@ -59,12 +62,24 @@ def main(
     plan_dir: Annotated[
         Path, typer.Option("--plan-dir", envvar="PHOTOMIGRATE_PLAN_DIR", help="Where plans go.")
     ] = DEFAULT_PLAN_DIR,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            envvar="PHOTOMIGRATE_CONFIG",
+            help="TOML settings (see photomigrate.example.toml). Default: built-in values.",
+        ),
+    ] = None,
 ) -> None:
     """Merge Google Photos into iCloud Photos. Never deletes anything.
 
     Every stage that writes is a dry run unless given --apply.
     """
-    ctx.obj = Settings(catalogue, plan_dir)
+    try:
+        settings = load_config(config)
+    except ConfigError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--config") from None
+    ctx.obj = Settings(catalogue, plan_dir, settings)
 
 
 def _zone(name: str | None) -> ZoneInfo:
@@ -166,7 +181,8 @@ def analyse(
         EditedPolicyChoice, typer.Option(help="What to keep of an original and its Google edit.")
     ] = EditedPolicyChoice.pair,
 ) -> None:
-    """Link edits to originals, and propose duplicate groups (photos and videos) with keepers.
+    """Link edits to originals, propose duplicate groups (photos and videos) with keepers,
+    and flag quality problems with scores (thresholds from --config).
 
     Proposals only: the review decides.
     """
@@ -178,6 +194,7 @@ def analyse(
             DedupeConfig(candidate_phash=candidate_phash, fine_max=fine_max, dhash_max=dhash_max)
         ),
         VideoDedupeStage(VideoDedupeConfig(signature_max=signature_max)),
+        QualityStage(settings.config.quality),
     )
     try:
         for stage in stages:

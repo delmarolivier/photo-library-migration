@@ -5,13 +5,13 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from photomigrate.analyse.quality import photo_flags, video_flags
-from photomigrate.config import PhotoThresholds, VideoThresholds
 from PIL import Image, ImageEnhance, ImageFilter
 
+from photomigrate.analyse.quality import photo_flags, video_flags
+from photomigrate.config import PhotoThresholds, VideoThresholds
 from photomigrate.hashing import sample_video
 from photomigrate.quality import PhotoMetrics, VideoMetrics, photo_metrics, video_metrics
-from photomigrate.testing.media import encode_image, encode_video, synthetic_photo, video_frames
+from photomigrate.testing.media import encode_image, encode_video, scene_frames, synthetic_photo
 
 PHOTO = PhotoThresholds()
 VIDEO = VideoThresholds()
@@ -27,7 +27,7 @@ def measure(tmp_path: Path, image: Image.Image) -> PhotoMetrics:
 
 @pytest.fixture
 def sharp() -> Image.Image:
-    return synthetic_photo(11, size=(800, 600))
+    return synthetic_photo(21, size=(800, 600))
 
 
 def test_a_good_photo_has_no_flags(tmp_path: Path, sharp: Image.Image) -> None:
@@ -100,7 +100,7 @@ def clip_metrics(tmp_path: Path, frames: list[Image.Image], seconds: float) -> V
 
 
 def test_a_good_video_has_no_flags(tmp_path: Path) -> None:
-    metrics = clip_metrics(tmp_path, video_frames(1, seconds=2.0, size=(320, 240)), 2.0)
+    metrics = clip_metrics(tmp_path, scene_frames(1, seconds=2.0), 2.0)
 
     assert video_flags(metrics, duration=2.0, short_side=240, motion_half=False, t=VIDEO) == {}
 
@@ -108,7 +108,7 @@ def test_a_good_video_has_no_flags(tmp_path: Path) -> None:
 def test_black_static_tiny_and_short_videos(tmp_path: Path) -> None:
     black = clip_metrics(tmp_path, [Image.new("RGB", (64, 48), (2, 2, 2))] * 20, 2.0)
     still = clip_metrics(tmp_path, [synthetic_photo(9, (320, 240))] * 20, 2.0)
-    moving = clip_metrics(tmp_path, video_frames(1, seconds=2.0, size=(320, 240)), 2.0)
+    moving = clip_metrics(tmp_path, scene_frames(1, seconds=2.0), 2.0)
 
     assert {"black-video", "static-video"} <= set(
         video_flags(black, duration=2.0, short_side=240, motion_half=False, t=VIDEO)

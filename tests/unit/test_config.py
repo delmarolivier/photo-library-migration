@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import pytest
+
 from photomigrate.config import Config, ConfigError, load_config
 
 ROOT = Path(__file__).resolve().parents[2]

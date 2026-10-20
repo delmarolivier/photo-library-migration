@@ -20,21 +20,23 @@ Videos use the frames already sampled for their signature: mean ``brightness``, 
 from __future__ import annotations
 
 import itertools
-import warnings
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
-import pillow_heif
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image
 from scipy.ndimage import laplace
 
-pillow_heif.register_heif_opener()
-
-_MEASURE_SIZE = (1024, 1024)
-_ORIENTATION = 0x0112
-_QUARTER_TURNS = frozenset({5, 6, 7, 8})  # EXIF orientations stored sideways
+from photomigrate.hashing import (
+    ImageHashes,
+    Picture,
+    open_picture,
+    picture_hashes,
+    sample_video,
+    signature_of,
+)
 
 
 @dataclass(frozen=True)
@@ -68,20 +70,9 @@ class VideoMetrics:
         return cls(**data)
 
 
-def photo_metrics(path: Path) -> PhotoMetrics | None:
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", Image.DecompressionBombWarning)
-            with Image.open(path) as image:
-                width, height = image.size
-                if image.getexif().get(_ORIENTATION) in _QUARTER_TURNS:
-                    width, height = height, width
-                image.draft("L", _MEASURE_SIZE)
-                grey = ImageOps.exif_transpose(image).convert("L")
-                grey.thumbnail(_MEASURE_SIZE)
-    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
-        return None
-    pixels = np.asarray(grey, dtype=np.float64)
+def picture_metrics(picture: Picture) -> PhotoMetrics:
+    pixels = np.asarray(picture.image.convert("L"), dtype=np.float64)
+    width, height = picture.size
     return PhotoMetrics(
         sharpness=round(float(laplace(pixels).var()), 3),
         brightness=round(float(pixels.mean()), 3),
@@ -91,6 +82,19 @@ def photo_metrics(path: Path) -> PhotoMetrics | None:
         megapixels=round(width * height / 1e6, 4),
         short_side=min(width, height),
     )
+
+
+def photo_metrics(path: Path) -> PhotoMetrics | None:
+    picture = open_picture(path)
+    return None if picture is None else picture_metrics(picture)
+
+
+def measure_photo(path: Path) -> tuple[ImageHashes | None, PhotoMetrics | None]:
+    """A photo's perceptual hashes and metrics, from one decode. ``None``s if it is not one."""
+    picture = open_picture(path)
+    if picture is None:
+        return None, None
+    return picture_hashes(picture), picture_metrics(picture)
 
 
 def video_metrics(frames: Sequence[Image.Image]) -> VideoMetrics:
@@ -103,3 +107,18 @@ def video_metrics(frames: Sequence[Image.Image]) -> VideoMetrics:
     return VideoMetrics(
         brightness=round(float(np.mean([f.mean() for f in stack])), 3), motion=round(motion, 3)
     )
+
+
+def measure_video(
+    path: Path, duration: float | None
+) -> tuple[list[str] | None, VideoMetrics | None]:
+    """A video's signature and metrics, from one ffmpeg pass. ``None``s if it cannot be read."""
+    frames = sample_video(path, duration)
+    if frames is None:
+        return None, None
+    return signature_of(frames), video_metrics(frames)
+
+
+def as_json(metrics: PhotoMetrics | VideoMetrics | None) -> str:
+    """Metrics as stored in the catalogue's ``quality`` column (``{}``: not measured)."""
+    return "{}" if metrics is None else json.dumps(metrics.to_dict(), sort_keys=True)

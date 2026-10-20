@@ -6,7 +6,7 @@ import pytest
 from PIL import Image, ImageEnhance, ImageFilter
 
 from photomigrate.hashing import sample_video, signature_of
-from photomigrate.quality import photo_metrics, video_metrics
+from photomigrate.quality import measure_photo, measure_video, photo_metrics, video_metrics
 from photomigrate.testing.media import encode_image, encode_video, synthetic_image, video_frames
 
 
@@ -77,6 +77,15 @@ def test_undecodable_files_have_no_metrics(tmp_path: Path) -> None:
     (tmp_path / "x.jpg").write_bytes(b"nope")
 
     assert photo_metrics(tmp_path / "x.jpg") is None
+    assert measure_photo(tmp_path / "x.jpg") == (None, None)
+
+
+def test_hashes_and_metrics_come_from_one_decode(tmp_path: Path) -> None:
+    from photomigrate.hashing import image_hashes
+
+    path = jpeg(tmp_path, "a.jpg", synthetic_image(8, size=(1600, 1200)))
+
+    assert measure_photo(path) == (image_hashes(path), photo_metrics(path))
 
 
 def clip(tmp_path: Path, frames: list[Image.Image], name: str = "c.mp4") -> Path:
@@ -108,6 +117,7 @@ def test_the_signature_comes_from_the_same_sampled_frames(tmp_path: Path) -> Non
     assert frames is not None
     assert signature_of(frames) == video_signature(path, 2.0)
     assert sample_video(path, None) is None
+    assert measure_video(path, None) == (None, None)
 
 
 def test_sideways_photos_report_their_upright_size(tmp_path: Path) -> None:

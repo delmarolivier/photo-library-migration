@@ -4,10 +4,10 @@ Plan (read-only): list the zip parts, match media to sidecars folder by folder, 
 the sidecars. That gives one ``ingest`` action per media file, plus ``flag-…`` actions for
 orphan sidecars and unknown files, so nothing is dropped silently.
 
-Apply, one action at a time: stream the item to a scratch file, hash it, read its embedded
-metadata, decide what to write later (``policy.decide``), and record the item, its flags,
-its metadata plan and every date candidate. The zips are only ever read. Working copies
-are written at import time for approved items (M4-01).
+Apply, one action at a time: stream the item to a scratch file, hash it, measure its
+quality, read its embedded metadata, decide what to write later (``policy.decide``), and
+record the item, its flags, its metadata plan and every date candidate. The zips are only
+ever read. Working copies are written at import time for approved items (M4-01).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from types import TracebackType
 from typing import Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem
-from photomigrate.hashing import bitrate, image_hashes, video_signature
+from photomigrate.hashing import bitrate
 from photomigrate.ingest.exif import ExifTool, can_write
 from photomigrate.ingest.names import Kind, media_kind, parse_media_name
 from photomigrate.ingest.policy import date_candidates, decide
@@ -36,6 +36,13 @@ from photomigrate.ingest.sidecars import (
     parse_sidecar,
 )
 from photomigrate.ingest.takeout import Entry, Takeout, open_takeout
+from photomigrate.quality import (
+    PhotoMetrics,
+    VideoMetrics,
+    as_json,
+    measure_photo,
+    measure_video,
+)
 from photomigrate.runner import Action, JSONValue
 
 
@@ -177,10 +184,12 @@ class IngestStage:
         scratch.mkdir(parents=True, exist_ok=True)
         with self.takeout.local_copy(entry, scratch) as (copy, sha256):
             embedded = self.exiftool.read(copy)
-            hashes = image_hashes(copy) if details["kind"] == "photo" else None
-            signature = (
-                video_signature(copy, embedded.duration) if details["kind"] == "video" else None
-            )
+            hashes, signature = None, None
+            measured: PhotoMetrics | VideoMetrics | None
+            if details["kind"] == "photo":
+                hashes, measured = measure_photo(copy)
+            else:
+                signature, measured = measure_video(copy, embedded.duration)
         raw = details.get("sidecar_data")
         sidecar = SidecarData.from_dict(raw) if isinstance(raw, dict) else None
         album = details.get("album")
@@ -240,6 +249,7 @@ class IngestStage:
             metadata_plan=json.dumps(plan.to_dict(), sort_keys=True, ensure_ascii=False),
             google_url=url,
             content_id=embedded.content_id,
+            quality=as_json(measured),
         )
         item_id = catalogue.upsert_item(item)
         if album_id is not None:

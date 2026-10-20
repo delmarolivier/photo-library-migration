@@ -1,0 +1,105 @@
+"""The config file (TOML, given with ``--config``). Every setting has a built-in default.
+
+``photomigrate.example.toml`` lists every setting with its default (a test keeps the two in
+step). A file only needs the settings it changes. Unknown sections or settings, wrong types
+and negative values are errors, so a typo cannot silently fall back to a default.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, get_type_hints
+
+
+class ConfigError(ValueError):
+    """The config file is missing, not TOML, or has an unknown or invalid setting."""
+
+
+@dataclass(frozen=True)
+class PhotoThresholds:
+    """When a photo gets each quality flag. Measurements are described in ``quality.py``."""
+
+    blurry_below_sharpness: float = 30.0
+    low_resolution_below_megapixels: float = 0.3
+    under_exposed_below_brightness: float = 40.0
+    over_exposed_above_brightness: float = 215.0
+    dark_above_fraction: float = 0.5
+    """Also under-exposed: more than this share of pixels near black."""
+    bright_above_fraction: float = 0.5
+    """Also over-exposed: more than this share of pixels near white."""
+    accidental_below_contrast: float = 10.0
+    """A flat frame: a pocket shot, a black frame, a lens cap."""
+
+
+@dataclass(frozen=True)
+class VideoThresholds:
+    short_below_seconds: float = 1.5
+    """Live Photo motion halves are never short clips."""
+    black_below_brightness: float = 12.0
+    static_below_motion: float = 2.0
+    tiny_below_short_side: int = 240
+
+
+@dataclass(frozen=True)
+class QualityConfig:
+    photo: PhotoThresholds = field(default_factory=PhotoThresholds)
+    video: VideoThresholds = field(default_factory=VideoThresholds)
+
+
+@dataclass(frozen=True)
+class Config:
+    quality: QualityConfig = field(default_factory=QualityConfig)
+
+
+def load_config(path: Path | None) -> Config:
+    """The built-in defaults, overridden by the file at ``path`` if one is given."""
+    if path is None:
+        return Config()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ConfigError(f"no config file at {path}") from None
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
+    try:
+        return _build(Config, data, "")
+    except ConfigError as exc:
+        raise ConfigError(f"{path}: {exc}") from None
+
+
+def _build[T](cls: type[T], data: dict[str, Any], prefix: str) -> T:
+    hints = get_type_hints(cls)
+    names = {f.name for f in dataclasses.fields(cls)}  # type: ignore[arg-type]
+    values: dict[str, Any] = {}
+    for name, value in data.items():
+        where = prefix + name
+        if name not in names:
+            what = "section" if isinstance(value, dict) else "setting"
+            raise ConfigError(f"unknown {what} {where!r}")
+        hint = hints[name]
+        if dataclasses.is_dataclass(hint):
+            if not isinstance(value, dict):
+                raise ConfigError(f"{where!r} must be a table, like [{where}]")
+            values[name] = _build(hint, value, where + ".")  # type: ignore[arg-type]
+        else:
+            values[name] = _number(value, hint, where)
+    return cls(**values)
+
+
+def _number(value: Any, hint: type, where: str) -> float | int:
+    if hint is int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ConfigError(f"{where!r} must be a whole number, not {value!r}")
+        number: float | int = value
+    else:
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ConfigError(f"{where!r} must be a number, not {value!r}")
+        number = float(value)
+    if number < 0:
+        raise ConfigError(f"{where!r} must not be negative")
+    return number

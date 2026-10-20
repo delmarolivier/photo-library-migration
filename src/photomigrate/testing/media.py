@@ -68,12 +68,27 @@ def synthetic_image(
     return image
 
 
+def synthetic_photo(seed: int, size: tuple[int, int] = (800, 600)) -> Image.Image:
+    """``synthetic_image`` with fine seeded grain, so it has the texture of a real, sharp photo
+    (flat shapes alone measure as blurry)."""
+    grain = random.Random(seed).randbytes(size[0] * size[1])
+    noise = Image.frombytes("L", size, grain).convert("RGB")
+    return Image.blend(synthetic_image(seed, size), noise, 0.12)
+
+
 def video_frames(
     seed: int, seconds: float = 1.0, fps: int = 10, size: tuple[int, int] = (64, 48)
 ) -> list[Image.Image]:
     """Frames of a seeded image panning sideways, so consecutive frames differ."""
     base = synthetic_image(seed, size)
     return [ImageChops.offset(base, step * 2, 0) for step in range(round(seconds * fps))]
+
+
+def scene_frames(
+    seed: int, seconds: float = 2.0, fps: int = 10, size: tuple[int, int] = (320, 240)
+) -> list[Image.Image]:
+    """Frames of a lively video: a different seeded scene every half second."""
+    return [synthetic_image(seed + step * 2 // fps, size) for step in range(round(seconds * fps))]
 
 
 def _offset(offset: timedelta) -> str:

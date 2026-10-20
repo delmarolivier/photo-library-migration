@@ -210,6 +210,18 @@ DROP TABLE groups;
 ALTER TABLE groups_v8 RENAME TO groups;
 """
 
+SCHEMA_V9 = """
+-- Quality: raw measurements (JSON, taken at ingest or index), and the flags the quality
+-- stage derives from them with the configured thresholds, each with a score from 0 to 1.
+ALTER TABLE items ADD COLUMN quality TEXT NOT NULL DEFAULT '{}';
+CREATE TABLE quality_flags (
+    item_id INTEGER NOT NULL REFERENCES items (id),
+    flag    TEXT NOT NULL,
+    score   REAL NOT NULL,
+    PRIMARY KEY (item_id, flag)
+);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -219,6 +231,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(6, "fine perceptual hashes", SCHEMA_V6),
     Migration(7, "video signatures and bitrates", SCHEMA_V7),
     Migration(8, "edit pairs", SCHEMA_V8),
+    Migration(9, "quality", SCHEMA_V9),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -304,6 +317,7 @@ class CatalogueItem:
     timezone: str | None = None
     video_signature: str | None = None
     bitrate: int | None = None
+    quality: str = "{}"
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
@@ -473,6 +487,29 @@ class Catalogue:
                 "UPDATE items SET flags = ?, updated_at = ? WHERE id = ?",
                 (json.dumps(sorted(merged)), self.now(), item_id),
             )
+
+    def set_quality_flags(self, item_id: int, flags: Mapping[str, float]) -> None:
+        """Make the item's quality flags exactly ``flags`` (flag -> score)."""
+        current = self.quality_flags(item_id).get(item_id, {})
+        if current == dict(flags):
+            return
+        self._conn.execute("DELETE FROM quality_flags WHERE item_id = ?", (item_id,))
+        self._conn.executemany(
+            "INSERT INTO quality_flags (item_id, flag, score) VALUES (?, ?, ?)",
+            [(item_id, flag, score) for flag, score in sorted(flags.items())],
+        )
+
+    def quality_flags(self, item_id: int | None = None) -> dict[int, dict[str, float]]:
+        """item id -> {flag: score}, for every flagged item (or just ``item_id``)."""
+        rows = self._conn.execute(
+            "SELECT item_id, flag, score FROM quality_flags WHERE ? IS NULL OR item_id = ? "
+            "ORDER BY item_id, flag",
+            (item_id, item_id),
+        )
+        found: dict[int, dict[str, float]] = {}
+        for row in rows:
+            found.setdefault(int(row["item_id"]), {})[row["flag"]] = float(row["score"])
+        return found
 
     # -- groups -----------------------------------------------------------------------------
 

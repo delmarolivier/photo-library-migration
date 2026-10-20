@@ -1,8 +1,8 @@
 """Content hashes: SHA-256 for byte-identical copies, perceptual hashes for near-duplicates.
 
-Perceptual hashes are computed on the upright image
-(EXIF orientation applied), so a rotated copy still matches. Big JPEGs are decoded at reduced
-size first, which is much faster and gives the same hash.
+Perceptual hashes are computed on the upright image (EXIF orientation applied), so a rotated
+copy still matches. Each photo is decoded once (``open_picture``) for its hashes and its
+quality metrics; big JPEGs are decoded at reduced size, which is much faster.
 """
 
 from __future__ import annotations
@@ -21,7 +21,10 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 pillow_heif.register_heif_opener()
 
-_DECODE_SIZE = (512, 512)
+_PICTURE_SIZE = (1024, 1024)
+_HASH_SIZE = (512, 512)
+_ORIENTATION = 0x0112
+_QUARTER_TURNS = frozenset({5, 6, 7, 8})  # EXIF orientations stored sideways
 
 
 @dataclass(frozen=True)
@@ -50,23 +53,47 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def image_hashes(path: Path) -> ImageHashes | None:
-    """Perceptual hashes of a picture, or ``None`` if it cannot be decoded as one."""
+@dataclass(frozen=True)
+class Picture:
+    """A photo decoded once, for hashing and measuring: upright RGB with the long side at most
+    1024 px, and the full upright ``size``."""
+
+    image: Image.Image
+    size: tuple[int, int]
+
+
+def open_picture(path: Path) -> Picture | None:
+    """Decode a photo, or ``None`` if it cannot be decoded as one."""
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Image.DecompressionBombWarning)
             with Image.open(path) as image:
-                image.draft("RGB", _DECODE_SIZE)  # JPEG only: decode at a fraction of full size
+                width, height = image.size
+                if image.getexif().get(_ORIENTATION) in _QUARTER_TURNS:
+                    width, height = height, width
+                image.draft("RGB", _PICTURE_SIZE)  # JPEG only: decode at a fraction of full size
                 upright = ImageOps.exif_transpose(image)
-                upright.thumbnail(_DECODE_SIZE)
+                upright.thumbnail(_PICTURE_SIZE)
                 rgb = upright.convert("RGB")
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
         return None
+    return Picture(rgb, (width, height))
+
+
+def picture_hashes(picture: Picture) -> ImageHashes:
+    small = picture.image.copy()
+    small.thumbnail(_HASH_SIZE)
     return ImageHashes(
-        str(imagehash.phash(rgb)),
-        str(imagehash.dhash(rgb)),
-        str(imagehash.phash(rgb, hash_size=16)),
+        str(imagehash.phash(small)),
+        str(imagehash.dhash(small)),
+        str(imagehash.phash(small, hash_size=16)),
     )
+
+
+def image_hashes(path: Path) -> ImageHashes | None:
+    """Perceptual hashes of a picture, or ``None`` if it cannot be decoded as one."""
+    picture = open_picture(path)
+    return None if picture is None else picture_hashes(picture)
 
 
 def hamming(a: str, b: str) -> int:

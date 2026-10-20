@@ -24,8 +24,15 @@ from types import TracebackType
 from typing import Any, Self, cast
 
 from photomigrate.catalogue import Catalogue, CatalogueItem, Kind
-from photomigrate.hashing import bitrate, image_hashes, sha256_file, video_signature
+from photomigrate.hashing import bitrate, sha256_file
 from photomigrate.ingest.exif import Embedded, ExifTool
+from photomigrate.quality import (
+    PhotoMetrics,
+    VideoMetrics,
+    as_json,
+    measure_photo,
+    measure_video,
+)
 from photomigrate.runner import Action, JSONValue
 from photomigrate.safety import ReadOnlyGuard
 
@@ -147,18 +154,21 @@ class IndexStage:
         sha256 = phash = dhash = fine = None
         signature: list[str] | None = None
         rate: int | None = None
+        measured: PhotoMetrics | VideoMetrics | None = None
         embedded = Embedded()
         if details["original"]:
             original = self.library / str(details["original"])
             sha256 = sha256_file(original)
-            hashes = image_hashes(original) if kind == "photo" else None
-            if hashes is not None:
-                phash, dhash, fine = hashes.phash, hashes.dhash, hashes.fine
             if self._exiftool is None:
                 self._exiftool = ExifTool()
             embedded = self._exiftool.read(original)
-            if kind == "video":
-                signature = video_signature(original, embedded.duration)
+            if kind == "photo":
+                hashes, measured = measure_photo(original)
+                phash, dhash, fine = (
+                    (hashes.phash, hashes.dhash, hashes.fine) if hashes else (None,) * 3
+                )
+            else:
+                signature, measured = measure_video(original, embedded.duration)
                 rate = bitrate(original.stat().st_size, embedded.duration)
         else:
             flags.add("original-missing")
@@ -186,6 +196,7 @@ class IndexStage:
                 content_id=embedded.content_id,
                 scores=json.dumps(details["scores"], sort_keys=True),
                 timezone=cast(str | None, details["timezone"]),
+                quality=as_json(measured),
             )
         )
         if details["date"]:
