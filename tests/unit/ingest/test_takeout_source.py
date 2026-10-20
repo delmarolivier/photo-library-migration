@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from photomigrate.ingest.takeout import TakeoutError, open_takeout
 
+from photomigrate.ingest.takeout import TakeoutError, open_takeout
 from photomigrate.testing.takeout import PHOTOS_ROOT, TakeoutBuilder, TakeoutManifest
 
 TAKEN = datetime(2019, 7, 1, 12, 0, tzinfo=UTC)
@@ -160,3 +160,28 @@ def test_reading_an_unknown_entry_fails(tmp_path: Path) -> None:
 
     with open_takeout(tmp_path / "in") as takeout, pytest.raises(KeyError):
         takeout.read("Takeout/Google Photos/nope.jpg")
+
+
+def test_directory_entries_and_identical_repeats_across_parts_are_fine(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    for number in (1, 2):
+        with zipfile.ZipFile(
+            tmp_path / "in" / f"takeout-20261020T000000Z-00{number}.zip", "w"
+        ) as z:
+            z.writestr("Takeout/Google Photos/Photos from 2019/", b"")
+            z.writestr("Takeout/Google Photos/Photos from 2019/IMG_1.JPG", b"same")
+
+    with open_takeout(tmp_path / "in") as takeout:
+        assert [(e.path, e.part) for e in takeout.entries] == [
+            ("Takeout/Google Photos/Photos from 2019/IMG_1.JPG", "takeout-20261020T000000Z-001.zip")
+        ]
+
+
+def test_an_extracted_tree_ignores_files_outside_google_photos(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=3)
+    b.photo("Photos from 2019", "IMG_1.JPG", taken=TAKEN)
+    b.other_product("Maps (your places)/Saved Places.json", b"{}")
+    b.write_tree(tmp_path / "tree")
+
+    with open_takeout(tmp_path / "tree") as takeout:
+        assert takeout.ignored == 2
