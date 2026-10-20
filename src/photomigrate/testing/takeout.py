@@ -492,9 +492,10 @@ class TakeoutBuilder:
         motion_sidecar: bool = False,
         sidecar: SidecarStyle = "supplemental",
         geo: Geo | None = None,
+        image: Image.Image | None = None,
     ) -> tuple[Item, Item]:
         """A Live Photo as Takeout splits it: a still plus a short motion clip."""
-        picture = synthetic_image(self._seed())
+        picture = image or synthetic_image(self._seed())
         still = self.photo(
             folder, stem + still_ext, taken=taken, created=created, geo=geo, sidecar=sidecar,
             image=picture, quirks={"live-photo"},

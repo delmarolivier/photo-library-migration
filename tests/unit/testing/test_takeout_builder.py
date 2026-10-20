@@ -260,6 +260,16 @@ def test_live_photo_is_a_still_plus_a_motion_clip(builder: TakeoutBuilder) -> No
     assert manifest.item(still.path).live_partner == motion.path
 
 
+def test_live_photo_still_can_be_a_given_picture(builder: TakeoutBuilder) -> None:
+    picture = Image.new("RGB", (40, 30), (200, 10, 10))
+
+    still, _ = builder.live_photo("Photos from 2019", "IMG_2001", taken=TAKEN, image=picture)
+
+    stored = open_image(builder.files()[still.path])
+    assert stored.size == (40, 30)
+    assert stored.convert("RGB").getpixel((20, 15))[0] > 150
+
+
 def test_live_photo_variant_with_jpeg_mp4_and_both_sidecars(builder: TakeoutBuilder) -> None:
     still, motion = builder.live_photo(
         "Photos from 2019",

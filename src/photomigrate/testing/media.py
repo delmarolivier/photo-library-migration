@@ -68,12 +68,14 @@ def synthetic_image(
     return image
 
 
-def synthetic_photo(seed: int, size: tuple[int, int] = (800, 600)) -> Image.Image:
+def synthetic_photo(
+    seed: int, size: tuple[int, int] = (800, 600), *, jitter: int = 0
+) -> Image.Image:
     """``synthetic_image`` with fine seeded grain, so it has the texture of a real, sharp photo
-    (flat shapes alone measure as blurry)."""
+    (flat shapes alone measure as blurry). ``jitter``: the same scene a moment later."""
     grain = random.Random(seed).randbytes(size[0] * size[1])
     noise = Image.frombytes("L", size, grain).convert("RGB")
-    return Image.blend(synthetic_image(seed, size), noise, 0.12)
+    return Image.blend(synthetic_image(seed, size, jitter=jitter), noise, 0.12)
 
 
 def video_frames(
