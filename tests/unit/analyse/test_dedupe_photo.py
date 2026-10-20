@@ -300,3 +300,26 @@ def test_a_dhash_disagreement_alone_rejects_a_match(tmp_path: Path) -> None:
     )
 
     assert groups_of([a, b]) == []
+
+
+# --- precision fixes from the real-sample pixel check (2026-10-20) --------------------------
+
+
+def test_shots_one_second_apart_are_different_shots(tmp_path: Path) -> None:
+    # Real sample: every true duplicate with EXIF on both sides shares the exact EXIF second;
+    # the false positives were burst-style shots one second apart.
+    first = record(tmp_path, scene(70), taken=T)
+    second = record(tmp_path, scene(70, jitter=1), taken=T + timedelta(seconds=1))
+
+    assert groups_of([first, second]) == []
+
+
+def test_every_member_must_match_the_keeper_directly(tmp_path: Path) -> None:
+    keeper = record(tmp_path, scene(71), key="a-keeper")
+    link = replace(record(tmp_path, scene(72), key="b-link"), sha256=keeper.sha256)
+    chained = replace(record(tmp_path, scene(73), key="c-chained"), content_id="CI")
+    link = replace(link, content_id="CI")
+
+    (group,) = find_duplicates([keeper, link, chained], DedupeConfig())
+
+    assert set(group.members) == {keeper.id, link.id}, "c only matches b, not the keeper"
