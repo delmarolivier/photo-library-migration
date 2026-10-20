@@ -1,11 +1,13 @@
 """The SQLite catalogue: schema, migrations, idempotent writes and read-only snapshots."""
 
+import re
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+
 from photomigrate.catalogue import (
     MIGRATIONS,
     Catalogue,
@@ -137,7 +139,7 @@ def test_a_catalogue_newer_than_the_code_is_refused(tmp_path: Path) -> None:
 def test_migrations_must_be_numbered_one_by_one(tmp_path: Path) -> None:
     conn = sqlite3.connect(":memory:", isolation_level=None)
 
-    with pytest.raises(ValueError, match="1, 2, 3"):
+    with pytest.raises(ValueError, match=re.escape("got [1, 3]")):
         migrate(conn, (V1, Migration(3, "gap", "SELECT 1;")))
 
 
