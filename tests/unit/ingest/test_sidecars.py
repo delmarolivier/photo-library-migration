@@ -9,6 +9,8 @@ from pathlib import PurePosixPath
 import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
+
+from photomigrate.ingest.names import parse_media_name
 from photomigrate.ingest.sidecars import (
     SidecarData,
     SidecarError,
@@ -16,8 +18,6 @@ from photomigrate.ingest.sidecars import (
     match_folder,
     parse_sidecar,
 )
-
-from photomigrate.ingest.names import parse_media_name
 from photomigrate.testing.takeout import (
     EDITED_SUFFIXES,
     Geo,
@@ -233,7 +233,10 @@ def test_edited_copy_of_an_original_without_sidecar_is_unmatched() -> None:
 
 
 def test_edited_copy_whose_original_is_missing_finds_the_sidecar_by_name() -> None:
-    folder = match_folder(["IMG_2001-edited.jpg"], ["IMG_2001.HEIC.supplemental-metadata.json"])
+    folder = match_folder(
+        ["IMG_2001-edited.jpg", "IMG_3000.JPG"],
+        ["IMG_2001.HEIC.supplemental-metadata.json", "IMG_3000.JPG.supplemental-metadata.json"],
+    )
 
     match = folder.matches["IMG_2001-edited.jpg"]
     assert match.sidecar == "IMG_2001.HEIC.supplemental-metadata.json"
