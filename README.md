@@ -30,6 +30,10 @@ uv run photomigrate --help
 | `import` | Dry-run by default; `--apply` imports approved items and stages removals |
 | `report` | Reconciliation report: every Google item accounted for |
 
+Every stage that writes is a **dry run by default**. It prints the plan as a table and saves it
+as JSON under `data/plans/`, then stops. Add `--apply` to carry the plan out. Stages are
+resumable and safe to re-run: a finished stage has nothing left to do.
+
 ## Development
 
 Strict TDD with a 90% line + branch coverage gate. See [CLAUDE.md](CLAUDE.md) for the rules.

@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 1. Prep and ingest
-- Last completed issue: [M1-02] CLA-74 (synthetic Google Takeout fixture generator)
-- Next issue: [M1-03] CLA-75 (catalogue (SQLite), run framework and dry-run)
+- Last completed issue: [M1-03] CLA-75 (catalogue, stage runner, dry-run)
+- Next issue: [M1-04] CLA-76 (Takeout ingest: unzip, sidecar matching, metadata writeback)
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Which personal Mac will do the real run? Development happens on the work MacBook (fixtures
@@ -16,6 +16,24 @@
     Takeout zips (the project's stated fallback). Not needed for M1.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M1-03
+- Issues worked: CLA-75 [M1-03].
+- What changed: `photomigrate.catalogue` (schema v1, migrations, idempotent item and
+  date-candidate upserts, nested transactions, in-memory snapshots) and `photomigrate.runner`
+  (Action/Plan/Stage, dry-run vs apply, resume, plan JSON and rich tables). The guard now
+  decodes percent-encoded sqlite `file:` URIs.
+- Tests added / coverage: 262 tests, 100%.
+- Decisions made:
+  - Dry runs never open the catalogue for writing. They plan on an in-memory copy.
+  - Re-running a finished stage writes nothing at all, not even a `stage_runs` row.
+  - Group, decision and membership APIs are schema-only until the issues that use them
+    (M1-05, M2, M3) add methods with their own tests.
+- Handoff notes for next session:
+  - M1-04 wires the CLI: global `--catalogue` / `--plan-dir` options and `ingest --apply`,
+    using `run_stage` + `render_result`. Defaults are `runner.DEFAULT_CATALOGUE` and
+    `DEFAULT_PLAN_DIR`.
+  - Stage `apply` must be idempotent on disk: write only when the content differs.
+
 ### 2026-10-20: session 1 (continued): M1-02
 - Issues worked: CLA-74 [M1-02].
 - What changed:

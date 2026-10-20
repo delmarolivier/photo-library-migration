@@ -195,3 +195,16 @@ def test_rmtree_of_scratch_media_stores_is_not_blocked(
 
     assert not (scratch / "parent").exists()
     assert guard.violations == []
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        f"file://{PICTURES}/Photos%20Library.photoslibrary/database/Photos.sqlite?mode=ro",
+        f"file:{PICTURES}/catalogue.sqlite",
+        "file:///photomigrate-fake/home/%50ictures/x.sqlite",
+    ],
+)
+def test_sqlite_file_uris_are_decoded_before_checking(guard: PathGuard, uri: str) -> None:
+    with pytest.raises(ForbiddenPathError):
+        guard.check("sqlite3.connect", (uri,))

@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pillow>=13.0.0",
     "pillow-heif>=1.8.1",
+    "rich>=15.0.0",
     "typer>=0.27.3",
 ]
 
@@ -65,6 +66,7 @@ exclude_also = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "PT", "RUF", "S"]
