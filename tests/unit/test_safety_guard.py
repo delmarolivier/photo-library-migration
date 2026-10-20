@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -171,3 +172,26 @@ def test_dispatcher_routes_events_to_the_innermost_guard(
 
     with pytest.raises(ForbiddenPathError):
         safety._audit("photomigrate.path", (str(PHOTO),))
+
+
+def test_rmtree_of_scratch_media_stores_is_not_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scratch = tmp_path / "scratch"
+    library = scratch / "parent" / "Disposable.photoslibrary" / "database"
+    library.mkdir(parents=True)
+    (library / "Photos.sqlite").write_bytes(b"")
+    (scratch / "parent" / "Takeout").mkdir()
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    guard = PathGuard(GuardRules(forbidden_roots=(), allowed_roots=(scratch,)))
+
+    guard.activate()
+    try:
+        shutil.rmtree(scratch / "parent")
+    finally:
+        guard.deactivate()
+
+    assert not (scratch / "parent").exists()
+    assert guard.violations == []

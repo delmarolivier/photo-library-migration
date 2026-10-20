@@ -65,7 +65,7 @@ class GuardRules:
 
     Anything under ``forbidden_roots`` is always protected. Photos libraries and Takeout
     exports are protected unless they live under ``allowed_roots`` (tmp, test fixtures).
-    Paths are checked both as written and with symlinks resolved.
+    Absolute paths are checked both as written and with symlinks resolved.
     """
 
     forbidden_roots: tuple[Path, ...]
@@ -90,10 +90,21 @@ class GuardRules:
         return _root_forms(self.allowed_roots)
 
     def is_forbidden(self, path: PathArg) -> bool:
-        return any(self._form_is_forbidden(form) for form in _forms(os.fsdecode(path)))
+        text = os.fsdecode(path)
+        if os.path.isabs(text):
+            return any(self._form_is_forbidden(form) for form in _forms(text))
+        # A relative name may be relative to a directory fd (shutil.rmtree, os.fwalk) rather
+        # than the cwd, and that fd was checked when it was opened. So judge the cwd itself,
+        # plus the always-forbidden roots.
+        return self.is_forbidden(os.getcwd()) or any(
+            self._under_forbidden_root(form) for form in _forms(text)
+        )
+
+    def _under_forbidden_root(self, path: str) -> bool:
+        return any(_within(path, root) for root in self._forbidden)
 
     def _form_is_forbidden(self, path: str) -> bool:
-        if any(_within(path, root) for root in self._forbidden):
+        if self._under_forbidden_root(path):
             return True
         if any(_within(path, root) for root in self._allowed):
             return False

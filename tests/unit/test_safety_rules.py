@@ -134,3 +134,28 @@ def test_anything_under_pictures_is_forbidden(segments: list[str]) -> None:
 @given(segments=_plain_segments)
 def test_plain_paths_under_scratch_are_allowed(segments: list[str]) -> None:
     assert not RULES.is_forbidden(SCRATCH.joinpath(*segments))
+
+
+def test_relative_media_store_names_from_an_ordinary_cwd_are_allowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # shutil.rmtree and os.fwalk pass names relative to a directory fd, not the cwd. The fd
+    # itself was checked when it was opened, so a bare name must not be judged against the cwd.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    rules = GuardRules(forbidden_roots=(), allowed_roots=())
+
+    assert not rules.is_forbidden("Disposable.photoslibrary")
+    assert not rules.is_forbidden("Takeout")
+
+
+def test_relative_paths_inside_a_real_takeout_cwd_are_forbidden(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    takeout = tmp_path / "Downloads" / "Takeout"
+    takeout.mkdir(parents=True)
+    monkeypatch.chdir(takeout)
+    rules = GuardRules(forbidden_roots=(), allowed_roots=())
+
+    assert rules.is_forbidden("IMG_0001.jpg")
