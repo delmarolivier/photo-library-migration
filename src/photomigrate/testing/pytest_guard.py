@@ -1,8 +1,9 @@
 """Pytest plugin enforcing CLAUDE.md rule 4: tests never touch real user media.
 
 While the session runs, any access to ``~/Pictures``, a ``*.photoslibrary`` outside tmp, a
-real Takeout export, or the real samples in ``<rootdir>/data-in/`` is blocked. The test that caused it fails (or errors, from a fixture) even
-if it swallows the exception, and the session fails if an access happens outside any test.
+real Takeout export, or the real samples in ``<rootdir>/data-in/`` is blocked. The test that
+caused it fails (or errors, from a fixture) even if it swallows the exception, and the session
+fails if an access happens outside any test.
 Extra protected paths can be listed in ``PHOTOMIGRATE_GUARD_FORBID`` (``os.pathsep``-separated).
 """
 

@@ -57,9 +57,14 @@ Protected (`GuardRules`):
 - unless under an allowed root (tmp, `--basetemp`, `tests/fixtures/`): any path component
   matching `*.photoslibrary`, `Takeout`, `takeout-*.zip` or `takeout-*.tgz` (case-insensitive).
 
-Absolute paths are checked as written and with symlinks resolved. Relative paths are judged
-by the cwd plus the always-forbidden roots, because `shutil.rmtree` and `os.fwalk` emit names
-relative to a directory fd that was itself checked when it was opened.
+Absolute paths are checked as written and with symlinks resolved. A relative path is judged
+only by whether the cwd itself is protected. `shutil.rmtree` and `os.fwalk` emit bare names
+relative to a directory fd, which was itself checked when it was opened, so joining those
+names to the cwd gives false hits (a tmp `data-in` read as `<repo>/data-in`). The known gap
+is cwd-relative access into a protected root from its parent, so tests use absolute paths.
+
+The pytest plugin also forbids `<rootdir>/data-in/`, where Delmar's real Takeout and Timeline
+samples live.
 
 The pytest plugin `photomigrate.testing.pytest_guard` (loaded from `tests/conftest.py`)
 activates a guard for the session. It fails the test phase (setup, call or teardown) that
