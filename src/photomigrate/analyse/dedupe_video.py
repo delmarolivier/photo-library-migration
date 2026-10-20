@@ -23,6 +23,7 @@ from photomigrate.analyse.grouping import (
     apply_proposal,
     proposal_actions,
     same_value_pairs,
+    star_groups,
 )
 from photomigrate.catalogue import Catalogue, CatalogueItem, Source
 from photomigrate.dates import same_moment
@@ -37,7 +38,7 @@ class VideoDedupeConfig:
     duration_tolerance: float = 0.5
     signature_max: float = 8.0
     aspect_tolerance: float = 0.02
-    same_moment: timedelta = field(default=timedelta(seconds=1))
+    same_moment: timedelta = field(default=timedelta(0))
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,7 @@ def find_video_duplicates(
     groups = UnionFind(r.id for r in records)
     for first, second in same_value_pairs(records, "sha256"):
         groups.join(first, second, "exact")
+    near: set[frozenset[int]] = set()
     timed = sorted(
         (r for r in records if r.signature and r.duration), key=lambda r: r.duration or 0
     )
@@ -103,9 +105,16 @@ def find_video_duplicates(
         for b in timed[i + 1 :]:
             if (b.duration or 0) - (a.duration or 0) > config.duration_tolerance:
                 break
-            if groups.find(a.id) != groups.find(b.id) and _verified(a, b, config):
+            if _verified(a, b, config):
+                near.add(frozenset((a.id, b.id)))
                 groups.join(a.id, b.id, "near")
-    return groups.groups(records, video_keeper_order)
+
+    def edge(a: VideoRecord, b: VideoRecord) -> str | None:
+        if a.sha256 and a.sha256 == b.sha256:
+            return "exact"
+        return "near" if frozenset((a.id, b.id)) in near else None
+
+    return star_groups(groups.components(records), edge, video_keeper_order)  # type: ignore[arg-type]
 
 
 def _record(catalogue: Catalogue, item: CatalogueItem) -> VideoRecord:

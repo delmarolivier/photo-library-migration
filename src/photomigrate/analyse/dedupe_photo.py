@@ -31,6 +31,7 @@ from photomigrate.analyse.grouping import (
     apply_proposal,
     proposal_actions,
     same_value_pairs,
+    star_groups,
 )
 from photomigrate.catalogue import Catalogue, CatalogueItem, Source
 from photomigrate.dates import same_moment
@@ -46,9 +47,10 @@ class DedupeConfig:
     fine_max: int = 12
     dhash_max: int = 10
     aspect_tolerance: float = 0.02
-    same_moment: timedelta = field(default=timedelta(seconds=1))
-    """Copies keep identical EXIF times. EXIF has whole seconds, so burst frames taken within
-    the same second can still pass this check; the hashes have to tell them apart."""
+    same_moment: timedelta = field(default=timedelta(0))
+    """Copies keep identical EXIF times: on the real sample all 244 true duplicate pairs with
+    EXIF on both sides matched to the second, while the false positives were shots 1 s apart.
+    Burst frames within the same second still have to be told apart by the hashes."""
 
 
 @dataclass(frozen=True)
@@ -132,12 +134,22 @@ def find_duplicates(records: Sequence[PhotoRecord], config: DedupeConfig) -> lis
         groups.join(first, second, "exact")
     for first, second in same_value_pairs(records, "content_id"):
         groups.join(first, second, "content-id")
+    near: set[frozenset[int]] = set()
     hashed = [r for r in records if r.phash]
     for i, j, _ in near_pairs([int(r.phash or "0", 16) for r in hashed], config.candidate_phash):
         a, b = hashed[i], hashed[j]
-        if groups.find(a.id) != groups.find(b.id) and _verified(a, b, config):
+        if _verified(a, b, config):
+            near.add(frozenset((a.id, b.id)))
             groups.join(a.id, b.id, "near")
-    return groups.groups(records, keeper_order)
+
+    def edge(a: PhotoRecord, b: PhotoRecord) -> str | None:
+        if a.sha256 and a.sha256 == b.sha256:
+            return "exact"
+        if a.content_id and a.content_id == b.content_id:
+            return "content-id"
+        return "near" if frozenset((a.id, b.id)) in near else None
+
+    return star_groups(groups.components(records), edge, keeper_order)  # type: ignore[arg-type]
 
 
 # --- the stage -----------------------------------------------------------------------------
