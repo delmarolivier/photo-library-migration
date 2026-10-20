@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>photomigrate reconciliation</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 1.5rem; }
+    table { border-collapse: collapse; margin: .5rem 0 1.5rem; }
+    td, th { border: 1px solid #ccc; padding: .2rem .5rem; text-align: left; font-size: .85rem; }
+    .bad { color: #b00; font-weight: bold; }
+    .good { color: #070; font-weight: bold; }
+    code { font-size: .75rem; }
+  </style>
+</head>
+<body>
+<h1>Reconciliation</h1>
+{% set gaps = report.unaccounted | length %}
+<p class="{{ 'bad' if gaps else 'good' }}">{{ gaps }} unaccounted of {{ report.lines | length }} Google items.</p>
+
+<h2>Totals</h2>
+<table>
+  <tr><th>Source</th><th>Status</th><th>Items</th><th>Bytes</th></tr>
+  {% for source, rows in report.totals().items() %}{% for status, (count, size) in rows.items() %}
+  <tr><td>{{ source }}</td><td>{{ status }}</td><td>{{ count }}</td><td>{{ "{:,}".format(size) }}</td></tr>
+  {% endfor %}{% endfor %}
+</table>
+
+<h2>Rejections, fixes and staging</h2>
+<table>
+  {% for reason, count in report.reasons().items() %}<tr><td>rejected: {{ reason }}</td><td>{{ count }}</td></tr>{% endfor %}
+  <tr><td>date fixes</td><td>{{ report.date_fixes }}</td></tr>
+  <tr><td>location fixes</td><td>{{ report.location_fixes }}</td></tr>
+  <tr><td>staged in "To Delete"</td><td>{{ report.staged }}</td></tr>
+</table>
+
+{% if gaps %}
+<h2 class="bad">Unaccounted</h2>
+<table>
+  <tr><th>Takeout path</th><th>Why</th></tr>
+  {% for line in report.unaccounted %}<tr><td>{{ line.path }}</td><td>{{ line.detail }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+
+<h2>Every Google item</h2>
+<table>
+  <tr><th>Takeout path</th><th>Status</th><th>Detail</th><th>Copies</th><th>SHA-256 trail (Takeout → working copy → asset)</th></tr>
+  {% for line in report.lines %}
+  <tr><td>{{ line.path }}</td><td>{{ line.status }}</td><td>{{ line.detail }}</td><td>{{ line.copies }}</td>
+      <td><code>{{ (line.sha256 or '-')[:12] }} → {{ (line.working_sha256 or '-')[:12] }} → {{ line.photos_uuid or '-' }}</code></td></tr>
+  {% endfor %}
+</table>
+</body>
+</html>
