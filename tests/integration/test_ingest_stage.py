@@ -62,12 +62,25 @@ def test_every_item_is_catalogued_with_its_true_sidecar_or_flagged(applied) -> N
     manifest, tmp, _, _ = applied
     stored = items(tmp)
 
-    assert set(stored) == {item.path for item in manifest.items}
+    assert set(stored) == {item.path for item in manifest.items if item.copy_of is None}
     for item in manifest.items:
+        if item.copy_of is not None:
+            continue
         row = stored[item.path]
         assert row.sidecar_path == manifest.metadata_sidecar(item), item.path
         if row.sidecar_path is None:
             assert "no-sidecar" in row.flags, item.path
+
+
+def test_every_takeout_media_file_resolves_to_exactly_one_item(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        for item in manifest.items:
+            owner = item.copy_of or item.path
+            assert catalogue.item_for_key("google", item.path) == catalogue.item_for_key(
+                "google", owner
+            ), item.path
 
 
 def test_originals_are_located_in_their_zip_part_and_hashed(applied) -> None:  # type: ignore[no-untyped-def]
@@ -162,7 +175,7 @@ def test_re_running_ingest_changes_nothing(applied) -> None:  # type: ignore[no-
 
     again = ingest(manifest.zips[0].parent, tmp, apply=True)
 
-    assert first.applied == len(manifest.items)
+    assert first.applied == len(manifest.items) + len(manifest.albums)
     assert again.applied == 0
     assert (tmp / "catalogue.sqlite").read_bytes() == catalogue_before
 
@@ -173,7 +186,10 @@ def test_a_dry_run_only_writes_the_plan(
     result = ingest(standard_takeout_zips.zips[0].parent, tmp_path, apply=False)
 
     assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == [result.plan_path.name]  # type: ignore[union-attr]
-    assert result.plan.summary() == {"ingest": len(standard_takeout_zips.items)}
+    assert result.plan.summary() == {
+        "album": len(standard_takeout_zips.albums),
+        "ingest": len(standard_takeout_zips.items),
+    }
 
 
 def test_orphan_sidecars_and_unknown_files_are_flagged(tmp_path: Path) -> None:
@@ -208,3 +224,82 @@ def test_an_extracted_tree_is_ingested_in_place(tmp_path: Path) -> None:
 def test_a_stage_that_was_never_used_closes_cleanly(tmp_path: Path) -> None:
     with IngestStage(tmp_path / "nowhere", tmp_path / "work", zone=ZONE):
         pass
+
+
+ROOT = "Takeout/Google Photos"
+
+
+def test_an_item_in_three_albums_is_one_item_with_three_memberships(applied) -> None:  # type: ignore[no-untyped-def]
+    _, tmp, _, _ = applied
+    key = f"{ROOT}/Photos from 2019/IMG_1001.JPG"
+
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        item = catalogue.get_item("google", key)
+        assert item is not None
+        assert item.id is not None
+        assert catalogue.albums_of(item.id) == ["Best of", "Family", "Été 2019"]
+        assert catalogue.copies_of(item.id) == [
+            f"{ROOT}/Best of/IMG_1001.JPG",
+            f"{ROOT}/Family/IMG_1001.JPG",
+            f"{ROOT}/Été 2019/IMG_1001.JPG",
+        ]
+        assert catalogue.get_item("google", f"{ROOT}/Family/IMG_1001.JPG") is None
+
+
+def test_albums_keep_their_title_description_and_sharing(applied) -> None:  # type: ignore[no-untyped-def]
+    manifest, tmp, _, _ = applied
+
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        albums = {a.title: a for a in catalogue.albums()}
+
+    assert set(albums) == set(manifest.albums)
+    summer = albums["Été 2019"]
+    assert (summer.source_key, summer.description, summer.shared) == (
+        f"{ROOT}/Été 2019",
+        "Vacances 🌞",
+        True,
+    )
+    assert albums["Best of"].shared is False
+
+
+def test_items_that_live_only_in_an_album_still_get_a_membership(applied) -> None:  # type: ignore[no-untyped-def]
+    _, tmp, _, _ = applied
+
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        export = catalogue.get_item("google", f"{ROOT}/Exports/IMG_1003.jpg")
+        assert export is not None
+        assert export.id is not None
+        assert catalogue.albums_of(export.id) == ["Exports"]
+
+
+def test_favourites_captions_and_people_keywords_persist(applied) -> None:  # type: ignore[no-untyped-def]
+    _, tmp, _, _ = applied
+    stored = items(tmp)
+    beach = stored[f"{ROOT}/Photos from 2019/IMG_1001.JPG"]
+    tower = stored[f"{ROOT}/Photos from 2019/IMG_1003.HEIC"]
+
+    assert beach.favorite is True
+    assert beach.description == "Plage à Nice 🏖️"
+    assert tower.description == "東京タワー"
+    assert tower.favorite is False
+    with Catalogue.open(tmp / "catalogue.sqlite") as catalogue:
+        assert beach.id is not None
+        assert catalogue.keywords(beach.id) == {"People/Alice Example", "People/Bob Example"}
+
+
+def test_the_same_bytes_under_a_different_google_item_stay_separate(tmp_path: Path) -> None:
+    b = TakeoutBuilder(seed=8)
+    taken = datetime(2019, 7, 1, tzinfo=UTC)
+    original = b.photo("Photos from 2019", "IMG_1.JPG", taken=taken)
+    b.album("Holiday")
+    b.photo(
+        "Holiday", "IMG_9.JPG", taken=taken,
+        image=b._sources[original.path].image,  # same pixels, same bytes, new upload
+    )  # fmt: skip
+    b.write_zips(tmp_path / "in")
+
+    ingest(tmp_path / "in", tmp_path, apply=True)
+
+    stored = items(tmp_path)
+    assert len(stored) == 2
+    assert "same-bytes-as-another-item" in stored[f"{ROOT}/Holiday/IMG_9.JPG"].flags
