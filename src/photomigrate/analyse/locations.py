@@ -3,7 +3,8 @@
 * **Neighbours:** the same camera's located shots within ``window_minutes`` (30) before and
   after it, by wall-clock time. Between two, the location is interpolated in time; with one,
   it is copied. The nearest shot on each side counts. A shot without a camera has no
-  neighbours: the same device is the point.
+  neighbours: the same device is the point. ``any_device`` lets every camera's shots count
+  (two phones at one event).
 * **Timeline**, when ``analyse --timeline`` gives a Google Maps Timeline export and no
   neighbour helped: where the phone was at that moment (``timeline.Timeline.locate``). Local
   times without an offset are read in the home zone.
@@ -98,20 +99,25 @@ def infer(
     timeline: Timeline | None = None,
     zone: tzinfo | None = None,
     tolerance: timedelta = timedelta(minutes=15),
+    any_device: bool = False,
 ) -> dict[int, Inferred]:
     """A proposed location for every shot without one that its neighbours or the Timeline
-    can place."""
+    can place. ``any_device``: every camera's shots are neighbours, not just the same one's."""
+
+    def device(spot: Spot) -> str:
+        return "any" if any_device else cast(str, spot.camera)
+
     by_camera: dict[str, list[Spot]] = defaultdict(list)
     for current in spots:
         if current.camera and current.taken and current.latitude is not None:
-            by_camera[current.camera].append(current)
+            by_camera[device(current)].append(current)
     for located in by_camera.values():
         located.sort(key=lambda s: (s.wall, s.key))
     found: dict[int, Inferred] = {}
     for current in spots:
         if current.latitude is not None or not current.camera or current.taken is None:
             continue
-        guess = _from_neighbours(current, by_camera.get(current.camera, []), window)
+        guess = _from_neighbours(current, by_camera.get(device(current), []), window)
         if guess is None and timeline is not None:
             moment = current.taken
             if moment.tzinfo is None:
@@ -176,6 +182,7 @@ class LocationStage:
             timeline=self.timeline,
             zone=self.zone,
             tolerance=timedelta(minutes=self.config.timeline_tolerance_minutes),
+            any_device=self.config.any_device,
         )
         stored = catalogue.inferred_locations()
         for item_id, guess in found.items():

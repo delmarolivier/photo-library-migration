@@ -102,6 +102,8 @@ class LocationConfig:
     """A shot without GPS borrows from the same camera's shots within this long of it."""
     timeline_tolerance_minutes: float = 15.0
     """How far a Timeline path point may be from the moment, when no visit covers it."""
+    any_device: bool = False
+    """Also borrow from other cameras' shots (a shared event), not just the same device's."""
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,10 @@ def _build[T](cls: type[T], data: dict[str, Any], prefix: str) -> T:
             if not isinstance(value, dict):
                 raise ConfigError(f"{where!r} must be a table, like [{where}]")
             values[name] = _build(hint, value, where + ".")  # type: ignore[arg-type]
+        elif hint is bool:
+            if not isinstance(value, bool):
+                raise ConfigError(f"{where!r} must be true or false, not {value!r}")
+            values[name] = value
         else:
             values[name] = _number(value, hint, where)
     return cls(**values)

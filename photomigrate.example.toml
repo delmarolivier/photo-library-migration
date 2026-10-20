@@ -70,3 +70,5 @@ min_score = 0.5
 window_minutes = 30.0
 # With a Timeline export: how far from the moment a path point may be, when no visit covers it.
 timeline_tolerance_minutes = 15.0
+# Also borrow from other cameras' shots (two phones at one event), not just the same device's.
+any_device = false

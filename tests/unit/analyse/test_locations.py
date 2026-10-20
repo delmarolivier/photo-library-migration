@@ -150,3 +150,22 @@ def test_a_neighbour_beats_the_timeline() -> None:
 def test_the_timeline_needs_a_zone_for_local_times() -> None:
     with pytest.raises(ValueError, match="zone"):
         run([spot(30)], timeline=timeline(), tolerance=TOLERANCE)
+
+
+def test_a_time_with_an_offset_needs_no_home_zone_for_the_timeline() -> None:
+    aware = Spot(id=next(_ids), key="aware", camera="Apple iPhone 12",
+                 taken=(T + timedelta(minutes=30)).replace(tzinfo=PARIS), latitude=None,
+                 longitude=None)  # fmt: skip
+
+    found = run([aware], timeline=timeline(), tolerance=TOLERANCE)
+
+    assert found[aware.id].method == "timeline-visit"
+
+
+def test_any_device_lets_other_cameras_lend_their_location() -> None:
+    other, lost = spot(0, (48.0, 2.0), camera="Canon EOS 5D"), spot(5)
+    forward = spot(6, camera=None)
+
+    found = run([other, lost, forward], any_device=True)
+
+    assert set(found) == {lost.id}, "items without any camera still borrow nothing"
