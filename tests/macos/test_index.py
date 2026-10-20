@@ -13,6 +13,7 @@ from photomigrate.faces import VisionFaces, faces_from_json
 from photomigrate.index.icloud import IndexStage
 from photomigrate.runner import RunResult, run_stage
 from photomigrate.testing.embedder import ThumbnailEmbedder
+from photomigrate.text_regions import VisionText
 
 pytestmark = pytest.mark.macos
 
@@ -170,7 +171,9 @@ def test_the_cli_rejects_something_that_is_not_a_photos_library(tmp_path: Path) 
 
 
 def test_photos_get_an_embedding_and_their_faces(test_library: Path, tmp_path: Path) -> None:
-    with IndexStage(test_library, embedder=ThumbnailEmbedder(), faces=VisionFaces()) as stage:
+    with IndexStage(
+        test_library, embedder=ThumbnailEmbedder(), faces=VisionFaces(), text=VisionText()
+    ) as stage:
         run_stage(
             stage, catalogue_path=tmp_path / "catalogue.sqlite", plan_dir=tmp_path / "plans",
             apply=True,
@@ -180,6 +183,7 @@ def test_photos_get_an_embedding_and_their_faces(test_library: Path, tmp_path: P
     photos = [i for i in stored.values() if i.kind == "photo" and i.sha256]
     assert all(i.embedding is not None for i in photos)
     assert all(faces_from_json(i.faces) is not None for i in photos)
+    assert all(i.text is not None for i in photos)
     by_name = {name.lower(): item for name, item in stored.items()}
     wedding = next(item for name, item in by_name.items() if "wedding" in name)
     tulips = next(item for name, item in by_name.items() if "tulips" in name)
@@ -203,7 +207,7 @@ def test_the_cli_embeds_photos_and_reads_their_faces(test_library: Path, tmp_pat
 
     assert result.exit_code == 0, result.output
     photos = [i for i in icloud_items(tmp_path).values() if i.kind == "photo" and i.sha256]
-    assert all(i.embedding is not None and i.faces is not None for i in photos)
+    assert all(i.embedding is not None and i.faces is not None and i.text for i in photos)
 
 
 def test_the_camera_is_recorded(test_library: Path, tmp_path: Path) -> None:

@@ -47,6 +47,7 @@ from photomigrate.quality import (
     measure_video,
 )
 from photomigrate.runner import Action, JSONValue
+from photomigrate.text_regions import TextReader
 
 
 class IngestStage:
@@ -60,12 +61,14 @@ class IngestStage:
         zone: tzinfo,
         embedder: Embedder | None = None,
         faces: FaceReader | None = None,
+        text: TextReader | None = None,
     ) -> None:
         self.takeout_dir = takeout_dir
         self.work_dir = work_dir
         self.zone = zone
         self.embedder = embedder
         self.faces = faces
+        self.text = text
         self._takeout: Takeout | None = None
         self._exiftool: ExifTool | None = None
 
@@ -200,7 +203,9 @@ class IngestStage:
             photo, signature = PhotoMeasurement(), None
             video: VideoMetrics | None = None
             if details["kind"] == "photo":
-                photo = measure_photo(copy, embedder=self.embedder, faces=self.faces)
+                photo = measure_photo(
+                    copy, embedder=self.embedder, faces=self.faces, text=self.text
+                )
             else:
                 signature, video = measure_video(copy, embedded.duration)
         raw = details.get("sidecar_data")
@@ -266,6 +271,7 @@ class IngestStage:
             quality=as_json(photo.metrics or video),
             embedding=photo.embedding,
             faces=photo.faces,
+            text=photo.text,
         )
         item_id = catalogue.upsert_item(item)
         if album_id is not None:

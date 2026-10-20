@@ -234,6 +234,18 @@ SCHEMA_V11 = """
 ALTER TABLE items ADD COLUMN camera TEXT;
 """
 
+SCHEMA_V12 = """
+-- Clutter: the text Apple Vision found (JSON, see photomigrate.text_regions; NULL means not
+-- measured), and the review queue: each cluttered item's category, score and evidence.
+ALTER TABLE items ADD COLUMN text TEXT;
+CREATE TABLE clutter (
+    item_id  INTEGER PRIMARY KEY REFERENCES items (id),
+    category TEXT NOT NULL,
+    score    REAL NOT NULL,
+    evidence TEXT NOT NULL DEFAULT '{}'
+);
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -246,6 +258,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(9, "quality", SCHEMA_V9),
     Migration(10, "embeddings and faces", SCHEMA_V10),
     Migration(11, "cameras", SCHEMA_V11),
+    Migration(12, "clutter", SCHEMA_V12),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
@@ -336,6 +349,7 @@ class CatalogueItem:
     embedding: bytes | None = None
     faces: str | None = None
     camera: str | None = None
+    text: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
@@ -528,6 +542,38 @@ class Catalogue:
         for row in rows:
             found.setdefault(int(row["item_id"]), {})[row["flag"]] = float(row["score"])
         return found
+
+    def set_clutter(
+        self,
+        item_id: int,
+        category: str | None,
+        score: float = 0.0,
+        evidence: Mapping[str, float] | None = None,
+    ) -> None:
+        """Put the item in the clutter queue under ``category``, or take it out (``None``)."""
+        if category is None:
+            self._conn.execute("DELETE FROM clutter WHERE item_id = ?", (item_id,))
+            return
+        encoded = json.dumps(dict(evidence or {}), sort_keys=True)
+        self._conn.execute(
+            "INSERT INTO clutter (item_id, category, score, evidence) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (item_id) DO UPDATE SET category = excluded.category, "
+            "score = excluded.score, evidence = excluded.evidence "
+            "WHERE clutter.category IS NOT excluded.category OR clutter.score IS NOT "
+            "excluded.score OR clutter.evidence IS NOT excluded.evidence",
+            (item_id, category, score, encoded),
+        )
+
+    def clutter(self, item_id: int | None = None) -> dict[int, tuple[str, float, dict[str, float]]]:
+        """item id -> (category, score, evidence), for every queued item (or just ``item_id``)."""
+        rows = self._conn.execute(
+            "SELECT * FROM clutter WHERE ? IS NULL OR item_id = ? ORDER BY item_id",
+            (item_id, item_id),
+        )
+        return {
+            int(row["item_id"]): (row["category"], float(row["score"]), json.loads(row["evidence"]))
+            for row in rows
+        }
 
     # -- groups -----------------------------------------------------------------------------
 

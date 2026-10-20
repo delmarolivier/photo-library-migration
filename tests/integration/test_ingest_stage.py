@@ -18,6 +18,8 @@ from photomigrate.runner import RunResult, run_stage
 from photomigrate.testing.embedder import ThumbnailEmbedder
 from photomigrate.testing.faces import ONE_FACE, FixedFaces
 from photomigrate.testing.takeout import TakeoutBuilder, TakeoutManifest, standard_takeout
+from photomigrate.testing.text import SOME_TEXT, FixedText
+from photomigrate.text_regions import text_from_json
 
 ZONE = ZoneInfo("Europe/Paris")
 
@@ -372,7 +374,10 @@ def test_google_videos_get_a_signature_and_a_bitrate(applied) -> None:  # type: 
 def test_without_an_embedder_or_face_reader_nothing_of_either_is_stored(applied) -> None:  # type: ignore[no-untyped-def]
     _, tmp, _, _ = applied
 
-    assert all(row.embedding is None and row.faces is None for row in items(tmp).values())
+    assert all(
+        row.embedding is None and row.faces is None and row.text is None
+        for row in items(tmp).values()
+    )
 
 
 def test_photos_get_an_embedding_and_faces_from_the_stage_readers(tmp_path: Path) -> None:
@@ -389,6 +394,7 @@ def test_photos_get_an_embedding_and_faces_from_the_stage_readers(tmp_path: Path
         zone=ZONE,
         embedder=ThumbnailEmbedder(),
         faces=faces,
+        text=FixedText(),
     ) as stage:
         run_stage(
             stage, catalogue_path=tmp_path / "catalogue.sqlite", plan_dir=tmp_path / "plans",
@@ -401,7 +407,8 @@ def test_photos_get_an_embedding_and_faces_from_the_stage_readers(tmp_path: Path
     assert photo.embedding is not None
     assert from_bytes(photo.embedding).shape == (256,)
     assert faces_from_json(photo.faces) == list(ONE_FACE)
-    assert (video.embedding, video.faces) == (None, None)
+    assert text_from_json(photo.text) == SOME_TEXT
+    assert (video.embedding, video.faces, video.text) == (None, None, None)
     assert len(faces.seen) == 1, "videos are not read for faces"
 
 

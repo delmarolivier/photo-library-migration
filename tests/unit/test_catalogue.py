@@ -663,3 +663,38 @@ def test_a_new_answer_replaces_the_old_and_the_same_answer_changes_nothing(
     assert dump(path) == before
     cat.set_decision("group", group, "date", {"answer": "shift", "offset_seconds": 3600})
     assert cat.decision("group", group, "date") == {"answer": "shift", "offset_seconds": 3600}
+
+
+def test_v12_adds_text_measurements_and_the_clutter_queue(tmp_path: Path) -> None:
+    path = tmp_path / "v11.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:11])
+    conn.execute(
+        "INSERT INTO items (id, source, source_key, kind, created_at, updated_at)"
+        " VALUES (1, 'google', 'a', 'photo', 't', 't')"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.item(1).text is None
+        assert catalogue.clutter() == {}
+
+
+def test_an_items_clutter_category_is_replaced_and_cleared(cat: Catalogue, path: Path) -> None:
+    item_id = cat.upsert_item(PHOTO)
+    cat.set_clutter(item_id, "screenshot", 0.8, {"name": 0.8})
+    before = dump(path)
+
+    cat.set_clutter(item_id, "screenshot", 0.8, {"name": 0.8})
+
+    assert dump(path) == before, "unchanged categories are not rewritten"
+    assert cat.clutter() == {item_id: ("screenshot", 0.8, {"name": 0.8})}
+    cat.set_clutter(item_id, "meme", 0.6, {"caption": 0.6})
+    assert cat.clutter(item_id) == {item_id: ("meme", 0.6, {"caption": 0.6})}
+    cat.set_clutter(item_id, None)
+    assert cat.clutter() == {}
+
+
+def test_clutter_belongs_to_an_item(cat: Catalogue) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        cat.set_clutter(999, "meme", 0.6, {})

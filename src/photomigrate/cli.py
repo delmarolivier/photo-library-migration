@@ -34,6 +34,7 @@ from photomigrate.runner import (
     render_result,
     run_stage,
 )
+from photomigrate.text_regions import text_reader
 
 DEFAULT_WORK_DIR = Path("data/work")
 
@@ -121,13 +122,18 @@ def ingest(
     then pair split Live Photos.
 
     Photos are also embedded with open_clip (its weights, about 600 MB, are downloaded on
-    first use) and, on macOS, read for faces with Apple Vision."""
+    first use) and, on macOS, read for faces and text with Apple Vision."""
     settings: Settings = ctx.obj
     zone = _zone(timezone)
     console = Console()
     try:
         with IngestStage(
-            takeout_dir, work_dir, zone=zone, embedder=default_embedder(), faces=face_reader()
+            takeout_dir,
+            work_dir,
+            zone=zone,
+            embedder=default_embedder(),
+            faces=face_reader(),
+            text=text_reader(),
         ) as stage:
             for step in (stage, LivePhotoStage()):
                 result = run_stage(
@@ -150,11 +156,13 @@ def index(
     ] = False,
 ) -> None:
     """Catalogue the iCloud Photos library, read-only: hashes, dates, albums, scores,
-    open_clip embeddings and Vision faces."""
+    open_clip embeddings, Vision faces and text, screenshots."""
     settings: Settings = ctx.obj
     console = Console()
     try:
-        with IndexStage(library, embedder=default_embedder(), faces=face_reader()) as stage:
+        with IndexStage(
+            library, embedder=default_embedder(), faces=face_reader(), text=text_reader()
+        ) as stage:
             result = run_stage(
                 stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
             )
