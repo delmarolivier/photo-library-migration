@@ -229,6 +229,11 @@ ALTER TABLE items ADD COLUMN embedding BLOB;
 ALTER TABLE items ADD COLUMN faces TEXT;
 """
 
+SCHEMA_V11 = """
+-- The camera (make and model) from EXIF or QuickTime, for date batches.
+ALTER TABLE items ADD COLUMN camera TEXT;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -240,9 +245,11 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(8, "edit pairs", SCHEMA_V8),
     Migration(9, "quality", SCHEMA_V9),
     Migration(10, "embeddings and faces", SCHEMA_V10),
+    Migration(11, "cameras", SCHEMA_V11),
 )
 
 GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
+Subject = Literal["item", "group"]
 
 
 @dataclass(frozen=True)
@@ -328,6 +335,7 @@ class CatalogueItem:
     quality: str = "{}"
     embedding: bytes | None = None
     faces: str | None = None
+    camera: str | None = None
     id: int | None = None
 
     def replace(self, **changes: Any) -> CatalogueItem:
@@ -577,6 +585,28 @@ class Catalogue:
             (group_id,),
         )
         return [(int(row["item_id"]), row["role"], row["rank"]) for row in rows]
+
+    # -- decisions (the user's answers) ----------------------------------------------------
+
+    def set_decision(
+        self, subject: Subject, subject_id: int, kind: str, value: Mapping[str, Any]
+    ) -> None:
+        """Record the answer about an item or group; a new answer replaces the old one."""
+        encoded = json.dumps(dict(value), sort_keys=True, ensure_ascii=False)
+        self._conn.execute(
+            "INSERT INTO decisions (subject, subject_id, kind, value, decided_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (subject, subject_id, kind) DO UPDATE SET "
+            "value = excluded.value, decided_at = excluded.decided_at "
+            "WHERE decisions.value IS NOT excluded.value",
+            (subject, subject_id, kind, encoded, self.now()),
+        )
+
+    def decision(self, subject: Subject, subject_id: int, kind: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT value FROM decisions WHERE subject = ? AND subject_id = ? AND kind = ?",
+            (subject, subject_id, kind),
+        ).fetchone()
+        return None if row is None else dict(json.loads(row["value"]))
 
     def find_by_sha256(self, source: Source, sha256: str) -> list[CatalogueItem]:
         rows = self._conn.execute(

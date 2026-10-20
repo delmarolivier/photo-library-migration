@@ -99,26 +99,41 @@ def parse_media_name(name: str) -> MediaName:
 _DATE_PATTERNS = (
     # IMG_20120304_101112, VID_…, PXL_…123, PANO_…, Screenshot_20191105-123456, 20190101_101010
     re.compile(r"(?<!\d)(?P<y>\d{4})(?P<m>\d\d)(?P<d>\d\d)[_-](?P<H>\d\d)(?P<M>\d\d)(?P<S>\d\d)"),
-    # 2019-07-01 12.34.56 (Dropbox, Apple exports), signal-2021-02-03-040506
+    # macOS screenshots: "Screenshot 2019-11-05 at 12.34.56", "Screen Shot … at 1.34.56 PM"
     re.compile(
-        r"(?<!\d)(?P<y>\d{4})-(?P<m>\d\d)-(?P<d>\d\d)[ _-](?P<H>\d\d)\.?(?P<M>\d\d)\.?(?P<S>\d\d)"
+        r"(?<!\d)(?P<y>\d{4})-(?P<m>\d\d)-(?P<d>\d\d) at (?P<H>\d{1,2})\.(?P<M>\d\d)\.(?P<S>\d\d)"
+        r"(?: (?P<half>[AP]M))?"
     ),
-    # IMG-20190702-WA0003 (WhatsApp): date only
+    # 2019-07-01 12.34.56 (Dropbox, Apple exports), signal-2021-02-03-040506,
+    # photo_2021-02-03_04-05-06 (Telegram), Screenshot_2019-11-05-12-34-56-789 (Android)
+    re.compile(
+        r"(?<!\d)(?P<y>\d{4})-(?P<m>\d\d)-(?P<d>\d\d)[ _-]"
+        r"(?P<H>\d\d)[.-]?(?P<M>\d\d)[.-]?(?P<S>\d\d)"
+    ),
+    # Dates only, read as midnight: IMG-20190702-WA0003 (WhatsApp), IMG_20120304, 2012-03-04
     re.compile(r"(?<!\d)(?P<y>\d{4})(?P<m>\d\d)(?P<d>\d\d)-WA\d+"),
+    re.compile(r"(?<!\d)(?P<y>\d{4})(?P<m>\d\d)(?P<d>\d\d)(?!\d)"),
+    re.compile(r"(?<!\d)(?P<y>\d{4})-(?P<m>\d\d)-(?P<d>\d\d)(?!\d)"),
 )
 
 
 def date_from_filename(name: str) -> datetime | None:
-    """A capture time encoded in the file name (local time, naive), if there is one."""
+    """A capture time encoded in the file name (local time, naive), if there is one.
+
+    The first pattern that matches decides; an impossible date there means no date at all.
+    """
     for pattern in _DATE_PATTERNS:
         found = pattern.search(name)
         if not found:
             continue
         fields = found.groupdict()
+        hour = int(fields.get("H") or 0)
+        if fields.get("half"):
+            hour = hour % 12 + (12 if fields["half"] == "PM" else 0)
         try:
             when = datetime(
                 int(fields["y"]), int(fields["m"]), int(fields["d"]),
-                int(fields.get("H") or 0), int(fields.get("M") or 0), int(fields.get("S") or 0),
+                hour, int(fields.get("M") or 0), int(fields.get("S") or 0),
             )  # fmt: skip
         except ValueError:
             return None

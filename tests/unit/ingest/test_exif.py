@@ -17,6 +17,7 @@ from photomigrate.ingest.exif import (
 )
 from photomigrate.safety import ForbiddenPathError, GuardRules, PathGuard
 from photomigrate.testing.media import (
+    Exif,
     encode_gif,
     encode_image,
     encode_video,
@@ -292,3 +293,35 @@ def test_content_identifiers_are_read_from_apple_and_quicktime_tags(
     assert exiftool.read(clip).content_id == "3F2504E0-4F89-41D3"
     assert embedded_from_tags({"Apple:ContentIdentifier": "ABC"}).content_id == "ABC"
     assert exiftool.read(make(tmp_path, "a.jpg")).content_id is None
+
+
+def test_the_camera_is_its_make_and_model(exiftool: ExifTool, tmp_path: Path) -> None:
+    photo = tmp_path / "IMG_0001.JPG"
+    photo.write_bytes(
+        encode_image(
+            synthetic_image(1, (64, 48)), "JPEG", exif=Exif(make="Apple", model="iPhone 8")
+        )
+    )
+
+    assert exiftool.read(photo).camera == "Apple iPhone 8"
+    assert exiftool.read(make(tmp_path, "a.jpg")).camera is None
+
+
+@pytest.mark.parametrize(
+    ("tags", "camera"),
+    [
+        ({"IFD0:Make": "Canon", "IFD0:Model": "Canon EOS 5D"}, "Canon EOS 5D"),
+        (
+            {"IFD0:Make": "NIKON CORPORATION", "IFD0:Model": "NIKON D90"},
+            "NIKON CORPORATION NIKON D90",
+        ),
+        ({"Keys:Make": "Apple", "Keys:Model": "iPhone 12 mini"}, "Apple iPhone 12 mini"),
+        ({"IFD0:Model": "  DMC-TZ7 "}, "DMC-TZ7"),
+        ({"IFD0:Make": "SAMSUNG"}, "SAMSUNG"),
+        ({}, None),
+    ],
+)
+def test_camera_names_from_exif_and_quicktime_tags(
+    tags: dict[str, str], camera: str | None
+) -> None:
+    assert embedded_from_tags(tags).camera == camera

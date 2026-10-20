@@ -1,6 +1,7 @@
 """Command-line entry point: `photomigrate`."""
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -11,6 +12,8 @@ from rich.console import Console
 
 from photomigrate import __version__
 from photomigrate.analyse.best_shot import BestShotStage
+from photomigrate.analyse.date_audit import DateAuditStage
+from photomigrate.analyse.date_fixes import DateFixStage
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
 from photomigrate.analyse.edited import EditedVersionsStage
@@ -191,8 +194,9 @@ def analyse(
     ] = EditedPolicyChoice.pair,
 ) -> None:
     """Link edits to originals, propose duplicate groups (photos and videos) with keepers,
-    flag quality problems with scores (thresholds from --config), and group similar shots,
-    keeping the best two of each (window, similarity and weights from --config).
+    flag quality problems with scores (thresholds from --config), group similar shots,
+    keeping the best two of each (window, similarity and weights from --config), apply the
+    review's answers about dates, and batch the dates still in doubt for the review.
 
     Proposals only: the review decides.
     """
@@ -206,6 +210,8 @@ def analyse(
         VideoDedupeStage(VideoDedupeConfig(signature_max=signature_max)),
         QualityStage(settings.config.quality),
         BestShotStage(settings.config.best_shot),
+        DateFixStage(),
+        DateAuditStage(now=datetime.now(UTC)),
     )
     try:
         for stage in stages:

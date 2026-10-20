@@ -622,3 +622,44 @@ def test_embeddings_and_faces_are_stored_and_unchanged_ones_not_rewritten(
     assert dump(path) == before
     assert cat.item(item_id).embedding == b"\x00\x3c" * 4
     assert cat.item(item_id).faces == "[]"
+
+
+def test_v11_adds_the_camera(tmp_path: Path) -> None:
+    path = tmp_path / "v10.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:10])
+    conn.execute(
+        "INSERT INTO items (id, source, source_key, kind, created_at, updated_at)"
+        " VALUES (1, 'google', 'a', 'photo', 't', 't')"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.item(1).camera is None
+        item_id = catalogue.upsert_item(PHOTO.replace(camera="Apple iPhone 8"))
+        assert catalogue.item(item_id).camera == "Apple iPhone 8"
+
+
+def test_a_decision_is_stored_per_subject_and_kind(cat: Catalogue) -> None:
+    group = cat.upsert_group("date-batch", "batch-1", {})
+
+    assert cat.decision("group", group, "date") is None
+    cat.set_decision("group", group, "date", {"answer": "year", "year": 2004})
+
+    assert cat.decision("group", group, "date") == {"answer": "year", "year": 2004}
+    assert cat.decision("group", group, "keep") is None
+    assert cat.decision("item", group, "date") is None
+
+
+def test_a_new_answer_replaces_the_old_and_the_same_answer_changes_nothing(
+    cat: Catalogue, path: Path
+) -> None:
+    group = cat.upsert_group("date-batch", "batch-1", {})
+    cat.set_decision("group", group, "date", {"answer": "accept"})
+    before = dump(path)
+
+    cat.set_decision("group", group, "date", {"answer": "accept"})
+
+    assert dump(path) == before
+    cat.set_decision("group", group, "date", {"answer": "shift", "offset_seconds": 3600})
+    assert cat.decision("group", group, "date") == {"answer": "shift", "offset_seconds": 3600}
