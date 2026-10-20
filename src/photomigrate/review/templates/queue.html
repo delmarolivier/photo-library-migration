@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ queue.title }}{% endblock %}
+{% block main %}
+<h1>{{ queue.title }}</h1>
+<p class="hint">{{ queue.help }}</p>
+<p><progress value="{{ decided }}" max="{{ total or 1 }}"></progress> {{ decided }} / {{ total }}
+  · page {{ page }} of {{ pages }}
+  {% if page > 1 %}<a href="?page={{ page - 1 }}">previous</a>{% endif %}
+  {% if page < pages %}<a href="?page={{ page + 1 }}">next</a>{% endif %}</p>
+{% if queue.kind == "clutter" %}
+  <p class="bulk">Reject every item of a category:
+  {% for category in all_cards | map(attribute="extra.category") | unique %}
+    <button hx-post="/bulk"
+            hx-vals='{{ {"subject": "item", "kind": "clutter", "value": as_json({"reject": true}),
+                         "ids": all_cards | selectattr("extra.category", "equalto", category) | map(attribute="subject_id") | join(",")} | tojson }}'
+            hx-confirm="Reject every {{ category }}?">{{ category }}</button>
+  {% endfor %}</p>
+{% elif queue.kind == "edit-pair" %}
+  <p class="bulk">For every pair:
+  {% for policy, label in [("pair", "keep both"), ("original-only", "original only"), ("edited-only", "edit only")] %}
+    <button hx-post="/bulk"
+            hx-vals='{{ {"subject": "group", "kind": "edit-pair", "value": as_json({"policy": policy}),
+                         "ids": all_cards | map(attribute="subject_id") | join(",")} | tojson }}'
+            hx-confirm="{{ label }} for every pair?">{{ label }}</button>
+  {% endfor %}</p>
+{% endif %}
+<section class="cards">
+  {% for card in cards %}{% include "_card.html" %}{% endfor %}
+</section>
+{% endblock %}

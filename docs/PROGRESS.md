@@ -2,8 +2,8 @@
 
 ## Current state
 - Milestone: 3. Quality and review
-- Last completed issue: [M3-05] CLA-87 (location backfill).
-- Next issue: [M3-06] CLA-88 (review gallery).
+- Last completed issue: [M3-06] CLA-88 (review gallery). Milestone 3 is complete.
+- Next issue: [M4-01] CLA-89 (importer).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - Location backfill: borrow GPS across devices (`[location] any_device = true`)? On the
@@ -20,6 +20,20 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-20: session 1 (continued): M3-06
+- `photomigrate review` (FastAPI, Jinja2, htmx 2.0.4 vendored and checked against its
+  published SHA-384): eight queues; decisions are checked, then saved at once; bulk answers
+  for clutter categories and edit-pair policies; cached thumbnails from the zips and the
+  library (HEIC, video posters); keyboard shortcuts; progress bars.
+- Bound to 127.0.0.1 only (tested on a real socket, and seen live with lsof). Other host
+  names are refused, and writes need a same-origin Origin header.
+- Real sample (a /tmp copy): pages render in 10 to 90 ms; thumbnails take 68 ms from the
+  4 GB zip.
+- Tests: 1,062, 100%.
+- Handoff for M4-01: decisions to read are listed in DESIGN, "Review gallery". Also
+  `date_fixes.planned_write` (dates), `locations.approved_location` (GPS plus the keyword
+  `location-inferred`), and the clutter, quality and unmatched rejects.
+
 ### 2026-10-20: session 1 (continued): M3-05
 - `photomigrate.timeline` parses the iOS Timeline export (visits, activities, paths) and
   locates a moment; `testing.timeline.TimelineBuilder` writes synthetic exports.
