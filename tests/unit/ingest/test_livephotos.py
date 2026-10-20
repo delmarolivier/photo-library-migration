@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from hypothesis import assume, given
 from hypothesis import strategies as st
+
 from photomigrate.ingest.livephotos import Candidate, pair_live_photos
 
 T = datetime(2019, 7, 5, 14, 20, 0, tzinfo=UTC)
