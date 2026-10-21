@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from photomigrate.catalogue import Catalogue
 from photomigrate.config import ImportConfig
 from photomigrate.importer.library import PhotoscriptLibrary
 from photomigrate.importer.stage import FROM_GOOGLE, ImportStage
@@ -42,9 +43,12 @@ def test_the_fixtures_import_into_photos_once(setup, tmp_path: Path) -> None:  #
 
     assert first.applied >= 1
     assert again.plan.actions == ()
+    with Catalogue.open(path) as catalogue:
+        ours = sorted({uuid for uuid, _, _ in catalogue.imports().values()})
     database = osxphotos.PhotosDB(dbfile=str(library))
-    imported = database.photos(albums=[FROM_GOOGLE])
+    imported = database.photos(uuid=ours)  # this run's assets: earlier attempts don't count
     assert len(imported) == 3
+    assert all(FROM_GOOGLE in p.albums for p in imported)
     beach = next(p for p in imported if p.original_filename.endswith("IMG_0001.JPG"))
     assert (beach.favorite, beach.description) == (True, "Plage")
     assert {"People/Ann", "from-google"} <= set(beach.keywords)
