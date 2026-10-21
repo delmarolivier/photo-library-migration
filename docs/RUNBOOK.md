@@ -27,8 +27,23 @@ Use `"$L"` with its quotes: the library's name has spaces.
 
 - [ ] The external drive is attached, formatted APFS, with at least 2 TB free:
       `df -h /Volumes/Photos`.
-- [ ] All 12 Takeout parts are in `/Volumes/Photos/takeout/` (`takeout-*.zip`). The sizes
-      match the download page, and `unzip -t` passes on each part.
+- [ ] All 12 Takeout parts are in `/Volumes/Photos/takeout/` (`takeout-*.zip`). To fetch
+      them one at a time through the internal disk, use `scripts/download-takeout.sh`:
+      1. On takeout.google.com > Manage exports, right-click each part's Download button >
+         Copy link, and paste the 12 links, one per line, into `~/takeout-urls.txt`.
+      2. Export your google.com cookies from the browser where you are signed in. Use an
+         extension such as "Get cookies.txt LOCALLY", or copy the `cookie:` request header
+         of one download from the developer tools. Save them as `~/takeout-cookies.txt`
+         (`chmod 600` it).
+      3. In tmux: `scripts/download-takeout.sh --urls ~/takeout-urls.txt --cookies
+         ~/takeout-cookies.txt --dest /Volumes/Photos/takeout`.
+
+      Each part is downloaded (with a progress bar, resuming if the connection drops),
+      copied to the drive, checked by SHA-256, and only then removed from
+      `~/takeout-scratch`. Run it again after any interruption: finished parts are skipped.
+      If it says Google sent a web page, sign in again (Google may want your password once
+      more), export fresh cookies and rerun. Remove the cookies file when it's done, and sign
+      out of Google on that browser if you want the session gone.
 - [ ] The Photos library has been moved to the drive and is the System Photo Library
       (Photos > Settings > General). It is `/Volumes/Photos/Photos Library.photoslibrary`.
 - [ ] Photos > Settings > iCloud > **Download Originals to this Mac** is on, and Photos has

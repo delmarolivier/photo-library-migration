@@ -83,6 +83,9 @@ Every stage that writes is a **dry run by default**. It prints the plan as a tab
 as JSON under `data/plans/`, then stops. Add `--apply` to carry the plan out. Stages are
 resumable and safe to re-run: a finished stage has nothing left to do.
 
+To download the Takeout parts onto an external drive one at a time, see
+`scripts/download-takeout.sh --help` and RUNBOOK step 0.
+
 ## Development
 
 Strict TDD with a 90% line + branch coverage gate. See [CLAUDE.md](CLAUDE.md) for the rules.
