@@ -55,8 +55,9 @@ Photos and put the copy back.
 ## 2. Permissions
 
 - [ ] **Full Disk Access** (System Settings > Privacy & Security > Full Disk Access) for
-      `sshd-keygen-wrapper` (for commands run over ssh) and for the terminal app. Anything
-      run over ssh as you can then read all your files; step 7 takes it back.
+      `sshd-keygen-wrapper` (for commands run over ssh) and for the terminal app. `import`
+      needs it to read which library Photos has open. Anything run over ssh as you can then
+      read all your files; step 7 takes it back.
 - [ ] **Automation**: the first `import --apply` asks to let the terminal control Photos. Be
       at the Air's screen to allow it, or allow it beforehand under Privacy & Security >
       Automation.

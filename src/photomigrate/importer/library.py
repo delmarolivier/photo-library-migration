@@ -65,7 +65,13 @@ def _open_library() -> str | None:
 class PhotoscriptLibrary:
     def __init__(self, library: Path) -> None:
         opened = _open_library()
-        if opened is None or os.path.realpath(opened) != os.path.realpath(library):
+        if opened is None:
+            raise LibraryMismatchError(
+                "cannot tell which library Photos has open: its settings are unreadable. Give "
+                "this terminal Full Disk Access (System Settings > Privacy & Security), restart "
+                "it, and try again"
+            )
+        if os.path.realpath(opened) != os.path.realpath(library):
             raise LibraryMismatchError(
                 f"Photos has {opened} open, not {library}: open that library in Photos first"
             )

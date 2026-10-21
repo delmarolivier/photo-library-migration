@@ -12,7 +12,8 @@
     2026-10-21.
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
     under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
-    `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos`.
+    `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos --no-cov`
+    in Terminal (with Full Disk Access) at the Air.
   - The external APFS drive (2 TB or more, 4 TB to be comfortable) for the MacBook Air: Delmar
     is getting one (2026-10-21). Then download the 12 Takeout parts onto it before the links
     expire (about 2026-10-27, a week after the export).

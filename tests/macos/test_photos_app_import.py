@@ -1,11 +1,13 @@
 """The real thing: import the fixtures into a throwaway library open in Photos.app.
 
 Opt-in, because it drives Photos.app, which acts on whatever library it has open: Delmar
-creates an empty library under /tmp (Photos > hold Option at launch > Create New), opens it,
-grants the terminal Automation access to Photos, then runs
+creates an empty library under /tmp (Photos > hold Option at launch > Create New; Cmd-Shift-G
+in the dialog to type /tmp), opens it, gives Terminal Full Disk Access (to read which library
+Photos has open), then runs, in Terminal at the Mac (Automation asks there):
 
+    cd ~/Code/photo-library-migration
     PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/photomigrate-test.photoslibrary \\
-        uv run pytest tests/macos/test_photos_app_import.py -m macos
+        uv run pytest tests/macos/test_photos_app_import.py -m macos --no-cov
 
 The importer refuses to run unless Photos has exactly that library open.
 """
