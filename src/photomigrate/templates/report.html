@@ -16,6 +16,7 @@
 <h1>Reconciliation</h1>
 {% set gaps = report.unaccounted | length %}
 <p class="{{ 'bad' if gaps else 'good' }}">{{ gaps }} unaccounted of {{ report.lines | length }} Google items.</p>
+<p>{{ report.imported_assets }} assets in From Google (compare with the album's count in Photos).</p>
 
 <h2>Totals</h2>
 <table>

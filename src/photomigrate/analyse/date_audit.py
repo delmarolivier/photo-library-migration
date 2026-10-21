@@ -299,9 +299,14 @@ def dated_items(catalogue: Catalogue, *, answered: bool = True) -> list[Dated]:
         if role == "duplicate"
     }
     found = []
+    ours = catalogue.own_imports()
     for item in catalogue.items():
         item_id = cast(int, item.id)
-        if item_id in duplicates or (item.source == "google" and _LEFT_OUT & item.flags):
+        if (
+            item_id in duplicates
+            or item_id in ours
+            or (item.source == "google" and _LEFT_OUT & item.flags)
+        ):
             continue
         candidates = catalogue.date_candidates(item_id)
         if not answered:

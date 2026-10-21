@@ -5,14 +5,23 @@ writes is a dry run first. **Before each `--apply` there is a GO checkpoint**: r
 read its plan, and only continue once Delmar says "go". Nothing in this tool deletes anything.
 Removals end up in the "To Delete" album, and Delmar empties it by hand at the end.
 
-Paths below assume the external APFS drive is mounted as `/Volumes/Photos`. Change them if
-the drive has another name.
+Paths below assume the external APFS drive is called "Photos", so it mounts as
+`/Volumes/Photos`. Everything big lives on it: the Takeout, the library, and the tool's own
+data (catalogue, plans, working copies, thumbnails, reports) in `/Volumes/Photos/photomigrate/`.
+The internal disk has only about 70 GB free.
 
 ```sh
 ssh openclaw
 cd ~/Code/photo-library-migration && git pull && uv sync
 tmux new -s photomigrate        # long steps survive a dropped connection: tmux attach -t photomigrate
+# in every new shell (the rehearsal and the full run share this one catalogue):
+export PHOTOMIGRATE_CATALOGUE=/Volumes/Photos/photomigrate/catalogue.sqlite
+export PHOTOMIGRATE_PLAN_DIR=/Volumes/Photos/photomigrate/plans
+W=/Volumes/Photos/photomigrate
+L="/Volumes/Photos/Photos Library.photoslibrary"
 ```
+
+Use `"$L"` with its quotes: the library's name has spaces.
 
 ## 0. Before anything
 
@@ -61,12 +70,10 @@ Photos and put the copy back.
 ## 3. Rehearsal on the one-album sample
 
 The sample is the small Takeout used during development (one shared album, about
-3,300 items, 4 GB). Copy it to `/Volumes/Photos/sample/`. The rehearsal uses its own
-catalogue, so the full run starts clean:
-
-```sh
-export PHOTOMIGRATE_CATALOGUE=data/rehearsal.sqlite PHOTOMIGRATE_PLAN_DIR=data/rehearsal-plans
-```
+3,300 items, 4 GB). Copy it to `/Volumes/Photos/sample/`. The rehearsal and the full run
+share one catalogue. The full Takeout holds the same album files (same paths, SHA-256 and
+Google URLs), so ingest recognises them later as the items already imported, and the
+rehearsal's review answers carry over.
 
 What to expect, measured on this sample on the work Mac (2026-10-21; without the library):
 3,308 Google items. Before the review, 2,156 can be imported (one 3 GB batch). The review asks
@@ -75,69 +82,73 @@ bulk answer), 29 quality flags, 1 date batch and 1 unmatched item. The 1,562 edi
 the policy (keep both) unless one bulk answer changes it.
 
 1. **Ingest** (reads the zips, writes only the catalogue):
-   `uv run photomigrate ingest /Volumes/Photos/sample`. Read the plan.
-   **GO** → `uv run photomigrate ingest /Volumes/Photos/sample --apply`
-2. **Index the library** (read-only; quit Photos first):
-   `uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary"`. Check the
-   warning about originals not on this Mac: it should list none.
+   `uv run photomigrate ingest /Volumes/Photos/sample --work-dir $W/work`. Read the plan.
    **GO** → the same command with `--apply`.
+2. **Index the library** (read-only; quit Photos first): `uv run photomigrate index "$L"`.
+   Check the warning about originals not on this Mac: it should list none.
+   **GO** → `uv run photomigrate index "$L" --apply`.
 3. **Analyse** (catalogue only): `uv run photomigrate analyse`, then **GO** →
    `uv run photomigrate analyse --apply`. Add `--timeline /Volumes/Photos/Timeline.json` to
    use the Maps Timeline for 2025–26 photos.
 4. **Review**: start the gallery on the Air, and reach it from the work Mac through an SSH
    tunnel (it only listens on 127.0.0.1):
    ```sh
-   uv run photomigrate review --takeout /Volumes/Photos/sample \
-       --library "/Volumes/Photos/Photos Library.photoslibrary"
+   uv run photomigrate review --takeout /Volumes/Photos/sample --library "$L" --thumbs $W/thumbs
    # on the work Mac:  ssh -N -L 8765:127.0.0.1:8765 openclaw   then open http://127.0.0.1:8765
    ```
    Answer every queue. Google creations need a yes or a no; best-shot, duplicates and dates
-   need their groups answered. `report` lists anything left.
+   need their groups answered. Judge the best-shot groups too: if they look too loose or too
+   strict, we change `[best_shot] min_similarity` (0.94) and analyse again. `report` lists
+   anything left.
 5. **Import**: open Photos with the real library. Dry run first:
-   `uv run photomigrate import --takeout /Volumes/Photos/sample`. Read the plan: batches,
-   date and location fixes, and To Delete staging.
-   **GO** → `uv run photomigrate import --takeout /Volumes/Photos/sample --library "/Volumes/Photos/Photos Library.photoslibrary" --apply`.
-   It asks once more before importing.
-6. **Report**: `uv run photomigrate report --out data/rehearsal-report`. It must say
-   **0 unaccounted** (exit 0). Open `data/rehearsal-report/report.html`.
-7. Post the report's totals on Linear (CLA-92).
-8. Back to the default catalogue for the full run:
-   `unset PHOTOMIGRATE_CATALOGUE PHOTOMIGRATE_PLAN_DIR`.
+   `uv run photomigrate import --takeout /Volumes/Photos/sample --work-dir $W/work`. Read the
+   plan: batches, date and location fixes, and To Delete staging.
+   **GO** → the same command with `--library "$L" --apply`. It asks once more before
+   importing.
+6. **Index again** (quit Photos): `uv run photomigrate index "$L" --apply`. The catalogue now
+   knows the imported assets. They are recognised as the importer's own and kept out of every
+   review queue.
+7. **Report**: `uv run photomigrate report --out $W/rehearsal-report`. It must say
+   **0 unaccounted** (exit 0). Open `$W/rehearsal-report/report.html`.
+8. Post the report's totals on Linear (CLA-92).
 
 ## 4. Delmar checks the rehearsal in Photos
 
-- [ ] "From Google" holds the imported items, and the shared album is recreated with its
-      members.
+- [ ] "From Google" holds the imported items. Its count in Photos equals the report's
+      "N assets in From Google" (a Live Photo's still and clip are one asset).
+- [ ] The shared album is recreated with its members.
 - [ ] Favourites, captions, `People/…` keywords and `from-google` are there. Live Photos
       play.
 - [ ] Dates look right; `date-approx` items are on 1 July of their year.
 - [ ] "To Delete" holds only what was rejected in review, and nothing has disappeared.
+- [ ] On the iPhone, once iCloud has synced (it can take a while for thousands of items):
+      "From Google" and the shared album are there with the same counts.
 
-Fix anything odd before the full run. The rehearsal's imports are now ordinary iCloud items.
-The full run indexes them again and proposes their Google copies as duplicates.
+Fix anything odd before the full run.
 
 ## 5. The full run
 
-Same steps, default catalogue, all 12 parts. Ingest and index take hours, so run them in
-tmux.
+Same steps, same catalogue, all 12 parts. Ingest and index take hours, so run them in tmux.
 
-1. `uv run photomigrate ingest /Volumes/Photos/takeout` → **GO** → `--apply`.
-2. Quit Photos. `uv run photomigrate index "/Volumes/Photos/Photos Library.photoslibrary"` →
-   **GO** → `--apply`.
+1. `uv run photomigrate ingest /Volumes/Photos/takeout --work-dir $W/work` → **GO** →
+   `--apply`.
+2. Quit Photos. `uv run photomigrate index "$L"` → **GO** → `--apply`.
 3. `uv run photomigrate analyse [--timeline …]` → **GO** → `--apply`.
-4. `uv run photomigrate review --takeout /Volumes/Photos/takeout --library …`. Answer every
-   queue; it can take several sittings, since answers are saved as you go.
-5. `uv run photomigrate import --takeout /Volumes/Photos/takeout` → **GO** →
-   `--library … --apply`. It imports in batches of `[import] batch_gigabytes` (20). Before
-   each sitting, check the free space on the drive and the internal disk (`df -h`). If it
-   stops, run the same command again: imported items are skipped.
-6. After the import, quit Photos and index again (`--apply`), so the catalogue knows the new
-   assets.
+4. `uv run photomigrate review --takeout /Volumes/Photos/takeout --library "$L" --thumbs $W/thumbs`.
+   Answer every queue; it can take several sittings, since answers are saved as you go.
+5. Make a fresh copy of the library and run `confirm-backup` again (step 1).
+6. `uv run photomigrate import --takeout /Volumes/Photos/takeout --work-dir $W/work` → **GO** →
+   the same with `--library "$L" --apply`. It imports in batches of
+   `[import] batch_gigabytes` (20). Before each sitting, check the free space on the drive
+   (`df -h /Volumes/Photos`). If it stops, run the same command again: imported items are
+   skipped.
+7. After the import, quit Photos and index again (`--apply`).
 
 ## 6. Final report
 
-- [ ] `uv run photomigrate report` says **0 unaccounted** and exits 0. Keep
-      `data/report/report.html` and `report.csv`.
+- [ ] `uv run photomigrate report --out $W/report` says **0 unaccounted** and exits 0. Keep
+      `$W/report/report.html` and `report.csv`. Check the "N assets in From Google" count
+      against Photos once more.
 - [ ] Post the totals on Linear.
 
 ## 7. Cleanup (Delmar, by hand)
@@ -160,5 +171,5 @@ tmux.
   isn't redone.
 - **Originals not on this Mac** (from index): let Photos download them (step 0), then index
   again.
-- **Anything unexpected in a plan**: don't say go. Post the plan file (`data/plans/…`) on
+- **Anything unexpected in a plan**: don't say go. Post the plan file (`$W/plans/…`) on
   Linear.

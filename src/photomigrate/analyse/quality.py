@@ -101,8 +101,11 @@ class QualityStage:
             if role == "motion"
         }
         stored = catalogue.quality_flags()
+        ours = catalogue.own_imports()
         for item in catalogue.items():
             item_id = cast(int, item.id)  # rows read back from the catalogue have ids
+            if item_id in ours:
+                continue
             flags = self.flags(item, motion_half=item_id in motion)
             if flags != stored.get(item_id, {}):
                 details: dict[str, JSONValue] = {"source": item.source, "flags": dict(flags)}

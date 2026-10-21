@@ -196,3 +196,16 @@ def test_the_clip_of_a_rejected_still_is_rejected_with_it(cat: Catalogue) -> Non
     assert (line(cat, "IMG_0015.MOV").status, line(cat, "IMG_0015.MOV").detail) == (
         "rejected-by-user", "quality",
     )  # fmt: skip
+
+
+def test_imported_assets_count_a_live_photo_once(cat: Catalogue) -> None:
+    still = google(cat, "IMG_0016.HEIC")
+    clip = google(cat, "IMG_0016.MOV", flags=frozenset({"live-photo-motion"}))
+    other = google(cat, "IMG_0017.JPG")
+    for member, uuid in ((still, "UUID-LIVE"), (clip, "UUID-LIVE"), (other, "UUID-17")):
+        cat.record_import(member, uuid, "a" * 64, "batch-000001")
+
+    report = reconcile(cat)
+
+    assert report.imported_assets == 2, "what the From Google album shows in Photos"
+    assert report.totals()["google"]["imported"][0] == 3

@@ -396,6 +396,7 @@ def report(
         f"Date fixes {result.date_fixes}, location fixes {result.location_fixes}, "
         f"staged in To Delete {result.staged}. Report: {out / 'report.html'}"
     )
+    console.print(f"{result.imported_assets} assets in From Google (compare with Photos).")
     gaps = result.unaccounted
     console.print(f"{len(gaps)} unaccounted of {len(result.lines)} Google items.")
     for line in gaps[:20]:

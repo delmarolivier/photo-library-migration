@@ -754,3 +754,12 @@ def test_v16_adds_the_file_size(cat: Catalogue) -> None:
     item_id = cat.upsert_item(PHOTO.replace(size=1234))
 
     assert cat.item(item_id).size == 1234
+
+
+def test_icloud_assets_the_importer_made_are_known(cat: Catalogue) -> None:
+    google = cat.upsert_item(PHOTO)
+    cat.record_import(google, "UUID-NEW", "ab" * 32, "batch-000001")
+    ours = cat.upsert_item(CatalogueItem(source="icloud", source_key="UUID-NEW", kind="photo"))
+    cat.upsert_item(CatalogueItem(source="icloud", source_key="UUID-OLD", kind="photo"))
+
+    assert cat.own_imports() == {ours}

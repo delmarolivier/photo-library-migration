@@ -191,10 +191,12 @@ class DedupeStage:
         self.config = config or DedupeConfig()
 
     def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        ours = catalogue.own_imports()
         records = [
             _record(catalogue, item)
             for item in catalogue.items()
             if item.kind == "photo"
+            and item.id not in ours
             and (item.sha256 or item.phash)
             and not (item.source == "google" and _LEFT_OUT & item.flags)
         ]

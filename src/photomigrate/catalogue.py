@@ -662,6 +662,15 @@ class Catalogue:
             (item_id, uuid, working_sha256, batch, self.now()),
         )
 
+    def own_imports(self) -> set[int]:
+        """The iCloud items that are assets the importer made: a re-index brings them back,
+        and they are the same pictures as their Google originals."""
+        rows = self._conn.execute(
+            "SELECT i.id FROM items i JOIN imports m ON m.photos_uuid = i.source_key "
+            "WHERE i.source = 'icloud'"
+        )
+        return {int(row["id"]) for row in rows}
+
     def imports(self) -> dict[int, tuple[str, str, str]]:
         """item id -> (Photos uuid, working copy SHA-256, batch), for every imported item."""
         rows = self._conn.execute("SELECT * FROM imports ORDER BY item_id")
