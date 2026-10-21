@@ -389,3 +389,21 @@ def test_the_real_library_is_refused_unless_photos_has_it_open(
 
     with pytest.raises(LibraryMismatchError):
         cli.photos_library(tmp_path / "Test.photoslibrary")
+
+
+def test_a_clip_photos_keeps_apart_is_recorded_as_its_own_asset(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    path, takeout, _ = setup
+    library = DisposableLibrary(tmp_path / "Unpaired.photoslibrary", pairs_live_photos=False)
+    with ImportStage(
+        library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()
+    ) as stage:
+        run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    with Catalogue.open(path) as catalogue:
+        records = catalogue.imports()
+        still = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.HEIC") or 0
+        clip = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.MOV") or 0
+    assert records[still][0] != records[clip][0]
+    clip_asset = library.asset(records[clip][0])
+    assert clip_asset["keywords"] == ["from-google"]
+    assert set(library.albums()[FROM_GOOGLE]) == {uuid for uuid, _, _ in records.values()}

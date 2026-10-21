@@ -46,11 +46,37 @@ def test_the_fixtures_import_into_photos_once(setup, tmp_path: Path) -> None:  #
     with Catalogue.open(path) as catalogue:
         ours = sorted({uuid for uuid, _, _ in catalogue.imports().values()})
     database = osxphotos.PhotosDB(dbfile=str(library))
-    imported = database.photos(uuid=ours)  # this run's assets: earlier attempts don't count
-    assert len(imported) == 3
+    imported = database.photos(uuid=ours, movies=True)  # this run's: earlier attempts don't count
+    assert len(imported) == len(ours), "every recorded asset is in Photos"
     assert all(FROM_GOOGLE in p.albums for p in imported)
     beach = next(p for p in imported if p.original_filename.endswith("IMG_0001.JPG"))
     assert (beach.favorite, beach.description) == (True, "Plage")
     assert {"People/Ann", "from-google"} <= set(beach.keywords)
     assert "Holiday" in beach.albums
-    assert any(p.live_photo for p in imported)
+    # The fixture's still has no Apple content identifier (exiftool cannot write MakerNotes),
+    # so Photos keeps its clip apart; the importer records the clip as its own asset.
+    assert any(p.ismovie and p.original_filename.endswith("IMG_0003.MOV") for p in imported)
+
+
+@pytest.mark.skipif(not LIBRARY, reason="needs a throwaway library open in Photos.app")
+def test_a_real_live_photo_is_joined_into_one_asset(live_library: Path, tmp_path: Path) -> None:
+    """A genuine iPhone Live Photo (from osxphotos' test library), imported the way the
+    importer does: still and clip together, renamed. Photos must join them."""
+    import shutil
+
+    import osxphotos
+
+    source = osxphotos.PhotosDB(dbfile=str(live_library))
+    live = next(p for p in source.photos() if p.live_photo and p.path and p.path_live_photo)
+    still = tmp_path / f"9001-{live.original_filename}"
+    clip = tmp_path / f"9001-{Path(live.original_filename).stem}{Path(live.path_live_photo).suffix}"
+    shutil.copyfile(live.path, still)
+    shutil.copyfile(live.path_live_photo, clip)
+
+    ((still_uuid, clip_uuid),) = PhotoscriptLibrary(Path(str(LIBRARY))).import_assets(
+        [[still, clip]], "photomigrate live test"
+    )
+
+    assert still_uuid == clip_uuid, "Photos joined the clip to its still"
+    (asset,) = osxphotos.PhotosDB(dbfile=str(LIBRARY)).photos(uuid=[still_uuid])
+    assert asset.live_photo

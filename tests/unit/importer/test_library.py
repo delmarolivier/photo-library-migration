@@ -31,16 +31,30 @@ def test_a_disposable_library_imports_assets_into_an_album(tmp_path: Path) -> No
 
     uuids = photos.import_assets([[still, motion], [other]], "From Google")
 
-    assert len(set(uuids)) == 2
+    assert uuids[0][0] == uuids[0][1], "a Live Photo is one asset"
+    assert len({u for asset in uuids for u in asset}) == 2
     reopened = DisposableLibrary(tmp_path / "Test.photoslibrary")
-    live = reopened.asset(uuids[0])
+    live = reopened.asset(uuids[0][0])
     assert live["files"] == ["1-IMG_1.HEIC", "1-IMG_1.MOV"]
-    assert reopened.albums() == {"From Google": uuids}
+    assert reopened.albums() == {"From Google": [uuids[0][0], uuids[1][0]]}
+
+
+def test_a_disposable_library_can_behave_like_photos_with_unpairable_files(
+    tmp_path: Path,
+) -> None:
+    photos = DisposableLibrary(tmp_path / "Test.photoslibrary", pairs_live_photos=False)
+    still, clip = touch(tmp_path, "1-IMG_1.HEIC"), touch(tmp_path, "1-IMG_1.MOV")
+
+    ((still_uuid, clip_uuid),) = photos.import_assets([[still, clip]], "From Google")
+
+    assert still_uuid != clip_uuid
+    assert photos.asset(clip_uuid)["files"] == ["1-IMG_1.MOV"]
+    assert photos.albums()["From Google"] == [still_uuid, clip_uuid]
 
 
 def test_a_disposable_library_keeps_details_dates_places_and_albums(tmp_path: Path) -> None:
     photos = DisposableLibrary(tmp_path / "Test.photoslibrary")
-    (uuid,) = photos.import_assets([[touch(tmp_path, "a.jpg")]], "From Google")
+    ((uuid,),) = photos.import_assets([[touch(tmp_path, "a.jpg")]], "From Google")
 
     photos.set_details(uuid, favorite=True, description="Nice", keywords=["from-google"])
     photos.set_details(uuid, favorite=True, description=None, keywords=["People/Ann"])
@@ -142,10 +156,33 @@ def test_photoscript_imports_into_the_album_and_maps_each_asset_by_file_name(
 
     uuids = library.import_assets([[still, motion], [other]], "From Google")
 
-    assert uuids == ["UUID-1-IMG.HEIC", "UUID-2-a.jpg"]
+    assert uuids == [("UUID-1-IMG.HEIC", "UUID-1-IMG.HEIC"), ("UUID-2-a.jpg",)], "joined clip"
     assert photos.imports == [([str(still), str(motion), str(other)], "From Google", True)]
     library.import_assets([[touch(tmp_path, "3-b.jpg")]], "From Google")
     assert len(photos.albums) == 1, "an existing album is reused"
+
+
+def test_photoscript_gives_an_unjoined_clip_its_own_uuid(
+    photos: FakePhotos, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = PhotoscriptLibrary(tmp_path / "Real.photoslibrary")
+
+    def separately(
+        paths: list[str], album: FakeAlbum, skip_duplicate_check: bool
+    ) -> list[FakePhoto]:
+        found = []
+        for path in paths:
+            photo = FakePhoto(f"UUID-{Path(path).name}")
+            photo.filename = Path(path).name
+            found.append(photo)
+        return found
+
+    monkeypatch.setattr(photos, "import_photos", separately)
+    still, clip = touch(tmp_path, "1-IMG.HEIC"), touch(tmp_path, "1-IMG.MOV")
+
+    assert library.import_assets([[still, clip]], "From Google") == [
+        ("UUID-1-IMG.HEIC", "UUID-1-IMG.MOV")
+    ]
 
 
 def test_photoscript_says_which_file_photos_did_not_import(

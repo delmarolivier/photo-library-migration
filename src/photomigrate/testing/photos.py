@@ -18,8 +18,12 @@ from typing import Any
 
 
 class DisposableLibrary:
-    def __init__(self, root: Path) -> None:
+    """``pairs_live_photos=False`` behaves like Photos with files it cannot join (no matching
+    Apple content identifiers): a still and its clip become two assets."""
+
+    def __init__(self, root: Path, *, pairs_live_photos: bool = True) -> None:
         self.root = root
+        self.pairs_live_photos = pairs_live_photos
         self.root.mkdir(parents=True, exist_ok=True)
         self._state = self.root / "library.json"
         if not self._state.exists():
@@ -46,18 +50,22 @@ class DisposableLibrary:
         state["assets"][uuid] = _blank([filename])
         self._save(state)
 
-    def import_assets(self, assets: Sequence[Sequence[Path]], album: str) -> list[str]:
+    def import_assets(self, assets: Sequence[Sequence[Path]], album: str) -> list[tuple[str, ...]]:
         state = self._load()
-        made = []
+        made: list[tuple[str, ...]] = []
         for files in assets:
-            uuid = str(uuids.uuid4()).upper()
-            folder = self.root / "originals" / uuid
-            folder.mkdir(parents=True)
-            for path in files:
-                shutil.copy2(path, folder / Path(path).name)
-            state["assets"][uuid] = _blank([Path(p).name for p in files])
-            made.append(uuid)
-        state["albums"].setdefault(album, []).extend(made)
+            groups = [list(files)] if self.pairs_live_photos else [[f] for f in files]
+            asset_uuids = []
+            for group in groups:
+                uuid = str(uuids.uuid4()).upper()
+                folder = self.root / "originals" / uuid
+                folder.mkdir(parents=True)
+                for path in group:
+                    shutil.copy2(path, folder / Path(path).name)
+                state["assets"][uuid] = _blank([Path(p).name for p in group])
+                state["albums"].setdefault(album, []).append(uuid)
+                asset_uuids.extend([uuid] * len(group))
+            made.append(tuple(asset_uuids))
         self._save(state)
         return made
 

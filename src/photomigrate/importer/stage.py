@@ -214,10 +214,13 @@ class ImportStage:
             uuids = library.import_assets(
                 [[p for _, p, _ in asset] for asset in prepared], FROM_GOOGLE
             )
-            for asset, uuid in zip(prepared, uuids, strict=True):
+            for asset, file_uuids in zip(prepared, uuids, strict=True):
                 main, _, unwritten = asset[0]
-                self._details(catalogue, main, uuid, unwritten)
-                for member, path, _ in asset:
+                self._details(catalogue, main, file_uuids[0], unwritten)
+                for uuid in sorted(set(file_uuids[1:]) - {file_uuids[0]}):
+                    # a clip Photos kept apart: same favourite, caption, keywords and albums
+                    self._details(catalogue, main, uuid, MetadataWrite())
+                for (member, path, _), uuid in zip(asset, file_uuids, strict=True):
                     catalogue.record_import(
                         cast(int, member.id), uuid, _sha256(path), action.target
                     )
