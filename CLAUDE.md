@@ -61,6 +61,9 @@ photomigrate report   # reconciliation report
 - Google-made creations (-MOTION.gif, -MIX, -SMILE, composition AUTO) go to the clutter review queue,
   never auto-imported. (2026-10-20)
 - Takeout face-tag names (people[].name) become Photos keywords "People/<name>". (2026-10-20)
+- Location backfill borrows from any camera's shots nearby in time, not just the same
+  device's (`[location] any_device = true`); each place is still approved in review. (2026-10-21)
+- Best-shot similarity stays 0.94 until Delmar judges the groups in the rehearsal. (2026-10-21)
 
 ## Session workflow
 1. Read CLAUDE.md, docs/PROGRESS.md, then Linear P-CLA-3.

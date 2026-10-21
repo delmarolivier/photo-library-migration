@@ -102,8 +102,9 @@ class LocationConfig:
     """A shot without GPS borrows from the same camera's shots within this long of it."""
     timeline_tolerance_minutes: float = 15.0
     """How far a Timeline path point may be from the moment, when no visit covers it."""
-    any_device: bool = False
-    """Also borrow from other cameras' shots (a shared event), not just the same device's."""
+    any_device: bool = True
+    """Borrow from every camera's shots (two phones at one event), not just the same device's
+    (Delmar, 2026-10-21)."""
 
 
 @dataclass(frozen=True)

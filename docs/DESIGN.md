@@ -146,7 +146,8 @@ after.
   `[location] window_minutes` (30), by wall-clock time. Between one shot before and one after,
   the place is interpolated in time (`interpolated`); with one, it is copied (`neighbour`).
   The nearest shot on each side counts. Shots without a camera borrow nothing.
-  `any_device = true` lets every camera's shots count (two phones at one event).
+  `any_device` (default `true`, Delmar 2026-10-21) lets every camera's shots count (two phones
+  at one event); `false` keeps it to the same camera.
 - **Timeline** (`photomigrate.timeline`, only when no neighbour helped): Delmar's export is the
   iOS on-device format, a list of `visit`, `activity` and `timelinePath` segments with
   `geo:lat,lon` strings. A moment inside a visit takes the shortest such visit

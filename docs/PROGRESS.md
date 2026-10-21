@@ -12,11 +12,6 @@
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
     under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
     `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos`.
-  - Location backfill: borrow GPS across devices (`[location] any_device = true`)? On the
-    sample, the iPhone 4S shots have no GPS and the iPhone 5 shots do; across devices, 56
-    would get a proposal at 30 minutes. The default stays "same device", as the issue says.
-  - Best shot: `min_similarity` defaults to 0.94, measured on the sample (DESIGN, "Best
-    shot"). Please judge the groups in the review gallery (M3-06); lower groups more.
   - The external APFS drive (2 TB or more) for the MacBook Air: still to be attached. Then
     download the 12 Takeout parts onto it before the Google links expire.
   - Before the first real `index` (CLAUDE.md rule 10):

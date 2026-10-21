@@ -3,8 +3,8 @@
 * **Neighbours:** the same camera's located shots within ``window_minutes`` (30) before and
   after it, by wall-clock time. Between two, the location is interpolated in time; with one,
   it is copied. The nearest shot on each side counts. A shot without a camera has no
-  neighbours: the same device is the point. ``any_device`` lets every camera's shots count
-  (two phones at one event).
+  neighbours. With ``any_device`` (the default, Delmar's choice) every camera's shots count
+  (two phones at one event); without it, only the same camera's.
 * **Timeline**, when ``analyse --timeline`` gives a Google Maps Timeline export and no
   neighbour helped: where the phone was at that moment (``timeline.Timeline.locate``). Local
   times without an offset are read in the home zone.
