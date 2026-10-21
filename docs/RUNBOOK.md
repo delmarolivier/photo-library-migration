@@ -46,7 +46,8 @@ Photos and put the copy back.
 ## 2. Permissions
 
 - [ ] **Full Disk Access** (System Settings > Privacy & Security > Full Disk Access) for
-      `sshd-keygen-wrapper` (for commands run over ssh) and for the terminal app.
+      `sshd-keygen-wrapper` (for commands run over ssh) and for the terminal app. Anything
+      run over ssh as you can then read all your files; step 7 takes it back.
 - [ ] **Automation**: the first `import --apply` asks to let the terminal control Photos. Be
       at the Air's screen to allow it, or allow it beforehand under Privacy & Security >
       Automation.
@@ -144,6 +145,9 @@ tmux.
 - [ ] Go through the "To Delete" album in Photos, then delete its contents yourself. The
       tool never does.
 - [ ] Keep the Takeout zips for 30 days after the final report, then remove them by hand.
+- [ ] Take back the permissions from step 2: remove `sshd-keygen-wrapper` (and the terminal,
+      if it was only for this) from Full Disk Access, and the terminal from Automation >
+      Photos.
 
 ## If something goes wrong
 
