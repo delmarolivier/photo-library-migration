@@ -7,8 +7,9 @@
 - Next: Delmar reviews the runbook, then runs the rehearsal with Claude (CLA-92).
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
-  - Please review docs/RUNBOOK.md (CLA-92 acceptance). Then the rehearsal: it imports the
-    one-album sample into your real library on the Air, with a GO before each `--apply`.
+  - The rehearsal (CLA-92) once the drive is there: it imports the one-album sample into the
+    real library on the Air, with a GO before each `--apply`. Delmar reviewed the runbook on
+    2026-10-21.
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
     under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
     `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos`.
@@ -22,6 +23,23 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-21: session 2: Delmar's answers and the runbook review
+- Delmar's answers:
+  - best-shot stays at 0.94 until he judges the groups in the rehearsal;
+  - location backfill borrows across devices (`any_device = true`);
+  - he is getting the drive;
+  - a one-off copy of the library is the backup (no Time Machine);
+  - permissions are taken back after the migration;
+  - one catalogue for the rehearsal and the full run, all on the drive;
+  - two extra checks in Photos: the asset count, and the iPhone sync.
+- Code:
+  - `confirm-backup` asks for a full copy of the library;
+  - `Catalogue.own_imports()`: a re-index after an import keeps the importer's own assets
+    out of every analysis stage and out of To Delete;
+  - `report` gives the imported asset count, to compare with "From Google" in Photos.
+- Runbook rewritten accordingly (`PHOTOMIGRATE_*` variables, `$W`, `"$L"`).
+- Tests: 1,163, 100%.
+
 ### 2026-10-21: session 1 (continued): M4-04 (runbook)
 - docs/RUNBOOK.md: preparation, backup, permissions, rehearsal on the sample (its own
   catalogue), Delmar's checks in Photos, the full run in batches, the final report, and the
