@@ -27,10 +27,21 @@ tmux new -s photomigrate        # long steps survive a dropped connection: tmux 
 
 ## 1. Backup
 
-- [ ] A Time Machine backup that includes the library has finished since the last change.
-      Check it in Time Machine: the library is there, with today's date.
+A one-off full copy of the library is enough; Time Machine is not needed. The import adds
+items and changes some existing ones (dates, places, keywords), and iCloud syncs every change
+to all devices, so iCloud is not a backup. The copy is what makes a bad run undoable: quit
+Photos and put the copy back.
+
+- [ ] Quit Photos. Copy `/Volumes/Photos/Photos Library.photoslibrary` in the Finder, ideally
+      to another disk (`/Volumes/Photos/backup/` also works; it protects against a bad
+      import, but not against the drive failing). Do this after the move (step 0) and before
+      the rehearsal's import.
+- [ ] Check the copy opens: hold Option while launching Photos, choose the copy, look around,
+      quit, and switch back to the real library the same way.
 - [ ] Record it: `uv run photomigrate confirm-backup`. This writes `data/BACKUP-CONFIRMED`;
       `import --apply` refuses to run without it.
+- [ ] Make a fresh copy before the full run's import too (step 5), after the rehearsal's
+      import, and run `confirm-backup` again.
 
 ## 2. Permissions
 
@@ -139,6 +150,8 @@ tmux.
 - **"Photos has … open, not …"**: Photos has another library open. Open the right one
   (hold Option when launching Photos) and run the command again.
 - **"no confirmed backup"**: do step 1.
+- **A bad import or wrong dates**: quit Photos, move the damaged library aside (don't delete
+  it), put the copy from step 1 back, and open it.
 - **A command stops partway**: run it again. Every stage is resumable, and finished work
   isn't redone.
 - **Originals not on this Mac** (from index): let Photos download them (step 0), then index

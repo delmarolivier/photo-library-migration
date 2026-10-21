@@ -269,6 +269,7 @@ def test_applying_asks_first_and_a_no_imports_nothing(
     runner = CliRunner()
     confirmed = runner.invoke(app, ["confirm-backup", "--backup-marker", str(marker)], input="y\n")
     assert confirmed.exit_code == 0, confirmed.output
+    assert "full copy of the Photos library" in confirmed.output, "any backup method will do"
     assert marker.read_text(encoding="utf-8").startswith("Backup confirmed")
 
     declined = runner.invoke(app, cli_args(setup, tmp_path, "--apply"), input="n\n")
