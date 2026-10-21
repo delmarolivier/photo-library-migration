@@ -59,8 +59,8 @@ catalogue (it never writes it) and writes `report.csv` and `report.html`.
 
 `photomigrate import --takeout DIR [--library PATH --apply]` (`importer.stage`). It's a dry
 run unless `--apply`. `--apply` also needs the backup marker (`photomigrate confirm-backup`
-asks whether a Time Machine backup of the library finished, then writes
-`data/BACKUP-CONFIRMED`) and a yes at the prompt.
+asks whether a full copy of the library exists, made with Photos quit after its last change,
+then writes `data/BACKUP-CONFIRMED`) and a yes at the prompt.
 
 - **What each item becomes** (`importer.outcomes`, shared with To Delete and the report):
   - A Google item is `import`, `duplicate-of-existing` (a confirmed duplicate, with the copy

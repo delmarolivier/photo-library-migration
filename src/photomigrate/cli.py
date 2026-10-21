@@ -280,8 +280,8 @@ BackupMarker = Annotated[
 def confirm_backup(backup_marker: BackupMarker = DEFAULT_BACKUP_MARKER) -> None:
     """Say that the Photos library is backed up, which `import --apply` needs."""
     if not typer.confirm(
-        "Has a Time Machine backup of the Photos library finished since your last change, "
-        "with every original downloaded?"
+        "Is there a full copy of the Photos library (made with Photos quit, after its last "
+        "change, with every original downloaded), on another disk or folder?"
     ):
         typer.echo("Not marked. Check the backup first.", err=True)
         raise typer.Exit(code=1)
@@ -327,8 +327,8 @@ def import_(
         return
     if not backup_marker.is_file():
         typer.echo(
-            f"Error: no confirmed backup ({backup_marker}). Check the Time Machine backup of "
-            "the Photos library, then run: photomigrate confirm-backup",
+            f"Error: no confirmed backup ({backup_marker}). Copy the Photos library (Photos "
+            "quit), then run: photomigrate confirm-backup",
             err=True,
         )
         raise typer.Exit(code=1)
