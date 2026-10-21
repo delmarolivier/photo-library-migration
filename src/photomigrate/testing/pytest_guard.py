@@ -1,9 +1,10 @@
 """Pytest plugin enforcing CLAUDE.md rule 4: tests never touch real user media.
 
-While the session runs, any access to ``~/Pictures``, a ``*.photoslibrary`` outside tmp, a
-real Takeout export, or the real samples in ``<rootdir>/data-in/`` is blocked. The test that
-caused it fails (or errors, from a fixture) even if it swallows the exception, and the session
-fails if an access happens outside any test.
+While the session runs, any access to ``~/Pictures``, a ``*.photoslibrary`` outside the temp
+folders (the system's and ``/tmp``), a real Takeout export, or the real samples in
+``<rootdir>/data-in/`` is blocked. The test that caused it fails (or errors, from a fixture)
+even if it swallows the exception, and the session fails if an access happens outside any
+test.
 Extra protected paths can be listed in ``PHOTOMIGRATE_GUARD_FORBID`` (``os.pathsep``-separated).
 """
 
@@ -24,7 +25,8 @@ _guard_key = pytest.StashKey[PathGuard]()
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    allowed = [Path(tempfile.gettempdir()), config.rootpath / "tests" / "fixtures"]
+    # /tmp too: on macOS the temp dir is /var/folders/…/T, and no real library lives in /tmp
+    allowed = [Path(tempfile.gettempdir()), Path("/tmp"), config.rootpath / "tests" / "fixtures"]  # noqa: S108 (an allowlist, not a temp file)
     if config.option.basetemp:
         allowed.append(Path(config.option.basetemp))
     extra = [Path(p) for p in os.environ.get(FORBID_ENV, "").split(os.pathsep) if p]

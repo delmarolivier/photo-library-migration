@@ -207,3 +207,12 @@ def test_photoscript_takes_nothing_out_of_an_album_that_does_not_exist(
     PhotoscriptLibrary(tmp_path / "Real.photoslibrary").remove_from_album("Never made", ["U1"])
 
     assert photos.albums == {}
+
+
+def test_unreadable_photos_settings_say_what_permission_is_missing(
+    photos: FakePhotos, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(module, "_open_library", lambda: None)
+
+    with pytest.raises(LibraryMismatchError, match="Full Disk Access"):
+        PhotoscriptLibrary(tmp_path / "Real.photoslibrary")

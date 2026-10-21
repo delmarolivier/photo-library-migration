@@ -42,6 +42,25 @@ def test_opening_a_photos_library_outside_tmp_fails_the_test(pytester: pytest.Py
     run(pytester).assert_outcomes(failed=1)
 
 
+def test_a_throwaway_library_in_slash_tmp_is_allowed(pytester: pytest.Pytester) -> None:
+    """macOS's temp dir is /var/folders/…/T, but /tmp is just as temporary (and where a
+    throwaway Photos library for the opt-in Photos.app test is easiest to create)."""
+    pytester.makepyfile(
+        """
+        import os, shutil, uuid
+        def test_peek():
+            library = f"/tmp/photomigrate-guard-{uuid.uuid4().hex}.photoslibrary"
+            os.makedirs(library)
+            try:
+                open(os.path.join(library, "x"), "wb").close()
+            finally:
+                shutil.rmtree(library)
+        """
+    )
+
+    run(pytester).assert_outcomes(passed=1)
+
+
 def test_opening_a_real_takeout_archive_fails_the_test(pytester: pytest.Pytester) -> None:
     pytester.makepyfile(
         """

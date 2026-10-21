@@ -622,7 +622,8 @@ Protected (`GuardRules`):
 
 - always: `~/Pictures` for both the passwd home and `$HOME`, plus `PHOTOMIGRATE_GUARD_FORBID`
   entries;
-- unless under an allowed root (tmp, `--basetemp`, `tests/fixtures/`): any path component
+- unless under an allowed root (the system temp dir, `/tmp`, `--basetemp`, `tests/fixtures/`):
+  any path component
   matching `*.photoslibrary`, `Takeout`, `takeout-*.zip` or `takeout-*.tgz` (case-insensitive).
 
 Absolute paths are checked as written and with symlinks resolved. A relative path is judged

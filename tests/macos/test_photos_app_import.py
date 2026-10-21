@@ -1,11 +1,13 @@
 """The real thing: import the fixtures into a throwaway library open in Photos.app.
 
 Opt-in, because it drives Photos.app, which acts on whatever library it has open: Delmar
-creates an empty library under /tmp (Photos > hold Option at launch > Create New), opens it,
-grants the terminal Automation access to Photos, then runs
+creates an empty library under /tmp (Photos > hold Option at launch > Create New; Cmd-Shift-G
+in the dialog to type /tmp), opens it, gives Terminal Full Disk Access (to read which library
+Photos has open), then runs, in Terminal at the Mac (Automation asks there):
 
+    cd ~/Code/photo-library-migration
     PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/photomigrate-test.photoslibrary \\
-        uv run pytest tests/macos/test_photos_app_import.py -m macos
+        uv run pytest tests/macos/test_photos_app_import.py -m macos --no-cov
 
 The importer refuses to run unless Photos has exactly that library open.
 """
@@ -15,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from photomigrate.catalogue import Catalogue
 from photomigrate.config import ImportConfig
 from photomigrate.importer.library import PhotoscriptLibrary
 from photomigrate.importer.stage import FROM_GOOGLE, ImportStage
@@ -40,9 +43,12 @@ def test_the_fixtures_import_into_photos_once(setup, tmp_path: Path) -> None:  #
 
     assert first.applied >= 1
     assert again.plan.actions == ()
+    with Catalogue.open(path) as catalogue:
+        ours = sorted({uuid for uuid, _, _ in catalogue.imports().values()})
     database = osxphotos.PhotosDB(dbfile=str(library))
-    imported = database.photos(albums=[FROM_GOOGLE])
+    imported = database.photos(uuid=ours)  # this run's assets: earlier attempts don't count
     assert len(imported) == 3
+    assert all(FROM_GOOGLE in p.albums for p in imported)
     beach = next(p for p in imported if p.original_filename.endswith("IMG_0001.JPG"))
     assert (beach.favorite, beach.description) == (True, "Plage")
     assert {"People/Ann", "from-google"} <= set(beach.keywords)
