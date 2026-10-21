@@ -58,15 +58,16 @@ Photos and put the copy back.
       `sshd-keygen-wrapper` (for commands run over ssh) and for the terminal app. `import`
       needs it to read which library Photos has open. Anything run over ssh as you can then
       read all your files; step 7 takes it back.
-- [ ] **Automation**: the first `import --apply` asks to let the terminal control Photos. Be
-      at the Air's screen to allow it, or allow it beforehand under Privacy & Security >
-      Automation.
+- [ ] **Automation**: commands that drive Photos (`import --apply`) must run in Terminal at the
+      Air, or in a tmux session started there (`tmux new -s photomigrate`), because macOS never
+      offers Automation to an ssh session (error -1743). The first time, macOS asks to let
+      Terminal control Photos; click OK. Claude can then send commands into that tmux session
+      over ssh.
 - [ ] `.claude/settings.json` denies `~/Pictures`. The library now lives on the external
       drive, so that rule can stay. Only lift it if the library is still under
       `~/Pictures`, and put it back afterwards.
-- [ ] Optional, once: the real Photos.app test (see docs/PROGRESS.md). Make an empty library
-      under /tmp, open it in Photos, run the test, then switch Photos back to the real
-      library.
+- [x] Once: the real Photos.app test passed on 2026-10-21 (see
+      `tests/macos/test_photos_app_import.py`).
 
 ## 3. Rehearsal on the one-album sample
 

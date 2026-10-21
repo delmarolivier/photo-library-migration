@@ -10,6 +10,9 @@
   - The rehearsal (CLA-92) once the drive is there: it imports the one-album sample into the
     real library on the Air, with a GO before each `--apply`. Delmar reviewed the runbook on
     2026-10-21.
+  - The rehearsal (CLA-92) once the drive is there: it imports the one-album sample into the
+    real library on the Air, with a GO before each `--apply`. Delmar reviewed the runbook on
+    2026-10-21.
   - Needs you: run the real Photos.app import test once on the Air. Create an empty library
     under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
     `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos --no-cov`
@@ -24,6 +27,18 @@
     - give the go-ahead.
 
 ## Session log
+### 2026-10-21: session 2 (continued): the real Photos.app test
+- Both opt-in Photos.app tests pass on the Air with a throwaway library in /tmp: the fixture
+  import (albums, favourite, caption, keywords), and a genuine iPhone Live Photo, which Photos
+  joins into one asset.
+- Fixed on the way:
+  - the test guard allows /tmp;
+  - an unreadable-settings error now names the missing Full Disk Access;
+  - an unjoined Live Photo clip is recorded as its own asset.
+- The Air: Terminal and sshd-keygen-wrapper have Full Disk Access; tmux is installed.
+  Photos-driving commands run in a tmux session started in Terminal at the Air (macOS never
+  offers Automation to ssh sessions). RUNBOOK says so.
+
 ### 2026-10-21: session 2: Delmar's answers and the runbook review
 - Delmar's answers:
   - best-shot stays at 0.94 until he judges the groups in the rehearsal;
