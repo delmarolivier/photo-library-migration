@@ -59,6 +59,12 @@ class Report:
         return len(self.staged_ids)
 
     @property
+    def imported_assets(self) -> int:
+        """Distinct Photos assets imported: what "From Google" shows (a Live Photo's still and
+        clip are two items but one asset)."""
+        return len({line.photos_uuid for line in self.lines if line.status == "imported"})
+
+    @property
     def unaccounted(self) -> list[Line]:
         return [line for line in self.lines if line.status == "unaccounted"]
 

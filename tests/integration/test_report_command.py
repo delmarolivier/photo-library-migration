@@ -72,3 +72,13 @@ def test_a_long_list_of_gaps_is_cut_short_on_screen(setup, tmp_path: Path) -> No
     assert code == 1
     assert "more (see the report)" in output
     assert sum(1 for r in rows.values() if r["status"] == "unaccounted") >= 25
+
+
+def test_the_report_gives_the_asset_count_to_compare_with_photos(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    run_import(setup, tmp_path)
+
+    code, output, _ = report(setup[0], tmp_path / "report")
+
+    assert code == 0
+    assert "3 assets in From Google" in output
+    assert "3 assets in From Google" in (tmp_path / "report" / "report.html").read_text("utf-8")
