@@ -146,10 +146,12 @@ class VideoDedupeStage:
         self.config = config or VideoDedupeConfig()
 
     def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        ours = catalogue.own_imports()
         records = [
             _record(catalogue, item)
             for item in catalogue.items()
             if item.kind == "video"
+            and item.id not in ours
             and (item.sha256 or item.video_signature)
             and not (_MOTION_FLAGS & item.flags)
         ]

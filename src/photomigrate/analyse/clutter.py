@@ -300,8 +300,11 @@ class ClutterStage:
             if role == "duplicate"
         }
         stored = catalogue.clutter()
+        ours = catalogue.own_imports()
         for item in catalogue.items():
             item_id = cast(int, item.id)
+            if item_id in ours:
+                continue
             paired_edit = "edited" in item.flags and "unpaired-edit" not in item.flags
             motion = "live-photo-motion" in item.flags
             if item_id in duplicates or (item.source == "google" and (paired_edit or motion)):

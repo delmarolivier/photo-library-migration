@@ -228,11 +228,13 @@ class BestShotStage:
             if role != "keeper"
         }
         shots = []
+        ours = catalogue.own_imports()
         for item in catalogue.items():
             if (
                 item.kind != "photo"
                 or item.embedding is None
                 or item.id in duplicates
+                or item.id in ours
                 or (item.source == "google" and _LEFT_OUT & item.flags)
             ):
                 continue

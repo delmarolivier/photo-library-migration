@@ -135,9 +135,12 @@ def outcomes(catalogue: Catalogue) -> dict[int, Outcome]:
 def to_delete(catalogue: Catalogue) -> dict[int, str]:
     """The existing iCloud items the review rejected, with why, for the "To Delete" album."""
     found = _verdicts(catalogue)
+    ours = catalogue.own_imports()
     result = {}
     for item in catalogue.items("icloud"):
         item_id = int(item.id or 0)
+        if item_id in ours:
+            continue  # our own import: its Google original was the one decided about
         if item_id in found.duplicate_of:
             result[item_id] = "duplicate"
         elif found.rejected.get(item_id):
