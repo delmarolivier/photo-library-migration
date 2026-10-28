@@ -73,6 +73,14 @@ class VisionText:
     """Text regions by Apple Vision (macOS only)."""
 
     def read(self, image: Image.Image) -> TextSummary | None:
+        import objc
+
+        # Foundation objects are freed when an autorelease pool drains, and nothing drains
+        # one in a Python loop: one pool per picture keeps ingest's memory flat.
+        with objc.autorelease_pool():
+            return self._read(image)
+
+    def _read(self, image: Image.Image) -> TextSummary | None:
         import Vision
 
         # macOS 27 raises "key does not exist" for an empty options dict: pass none.

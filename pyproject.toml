@@ -97,7 +97,7 @@ module = [
     "exiftool", "exiftool.*", "imagehash", "imagehash.*", "open_clip", "open_clip.*", "osxphotos",
     "osxphotos.*", "scipy", "scipy.*",
     # pyobjc (macOS)
-    "Foundation", "Quartz", "Vision",
+    "Foundation", "Quartz", "Vision", "objc",
     # osxphotos's AppleScript bridge to Photos.app (macOS)
     "photoscript", "photoscript.*",
 ]

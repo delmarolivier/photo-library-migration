@@ -91,15 +91,23 @@ def faces_from_json(text: str | None) -> list[Face] | None:
     ]
 
 
+_TIFF_HEADROOM = 1 << 16
+"""Bytes for an uncompressed TIFF's header and directory, beyond its pixels."""
+
+
 def vision_data(image: Image.Image) -> Any:
     """The picture as ``NSData`` for Vision and Core Image (macOS): an uncompressed TIFF,
     quick to write and to read. The picture is already upright."""
     from Foundation import NSData
 
-    buffer = io.BytesIO()
-    image.convert("RGB").save(buffer, "TIFF")
-    raw = buffer.getvalue()
-    return NSData.dataWithBytes_length_(raw, len(raw))
+    rgb = image.convert("RGB")
+    # On macOS 27 a BytesIO that has to grow never hands its memory back (36 MB per 12 MP
+    # photo, enough to get ingest killed), so it gets room for the whole TIFF up front.
+    buffer = io.BytesIO(bytes(rgb.width * rgb.height * 3 + _TIFF_HEADROOM))
+    rgb.save(buffer, "TIFF")
+    size = buffer.tell()
+    raw = buffer.getbuffer()[:size].tobytes()
+    return NSData.dataWithBytes_length_(raw, size)
 
 
 def box_of(rect: Any, width: float = 1.0, height: float = 1.0) -> Box:
@@ -124,6 +132,14 @@ class VisionFaces:
         )
 
     def read(self, image: Image.Image) -> list[Face] | None:
+        import objc
+
+        # Foundation objects are freed when an autorelease pool drains, and nothing drains
+        # one in a Python loop: one pool per picture keeps ingest's memory flat.
+        with objc.autorelease_pool():
+            return self._read(image)
+
+    def _read(self, image: Image.Image) -> list[Face] | None:
         import Quartz
         import Vision
 

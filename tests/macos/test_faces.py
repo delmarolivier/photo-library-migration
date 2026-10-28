@@ -1,5 +1,6 @@
 """Apple Vision and Core Image on real photos with people (osxphotos' test library)."""
 
+import io
 from pathlib import Path
 
 import pytest
@@ -72,3 +73,36 @@ def test_a_picture_vision_cannot_read_has_no_face_measurement(
     monkeypatch.setattr(Vision, "VNImageRequestHandler", Refusing)
 
     assert read(osxphotos_libraries, WEDDING) is None
+
+
+def _footprint_mb() -> float:
+    """This process's physical footprint, as macOS counts it when it runs out of memory."""
+    import os
+    import subprocess
+
+    out = subprocess.run(
+        ["footprint", "-p", str(os.getpid())], capture_output=True, text=True, check=True
+    ).stdout
+    line = next(line for line in out.splitlines() if "Footprint:" in line)
+    amount, unit = line.split("Footprint:")[1].split()[:2]
+    return float(amount) * {"KB": 1 / 1024, "MB": 1.0, "GB": 1024.0}[unit]
+
+
+def test_reading_faces_and_text_does_not_keep_the_memory_of_each_picture() -> None:
+    # On macOS 27 a BytesIO that grows never hands its memory back, and Foundation objects
+    # wait for an autorelease pool that a Python loop never drains: 165 MB per 12 MP photo
+    # was kept, and ingest was killed after about 6,000 photos.
+    from PIL import Image
+
+    from photomigrate.faces import vision_data
+    from photomigrate.text_regions import VisionText
+
+    picture = Image.new("RGB", (4032, 3024), "gray")
+    assert Image.open(io.BytesIO(bytes(vision_data(picture)))).size == (4032, 3024)
+    faces, text = VisionFaces(), VisionText()
+    faces.read(picture), text.read(picture)  # Vision's own caches, once
+    before = _footprint_mb()
+    for _ in range(10):
+        faces.read(picture)
+        text.read(picture)
+    assert _footprint_mb() - before < 300
