@@ -87,7 +87,12 @@
 - Analyse on both sources, every proposal accepted (simulated on an in-memory copy): 15,851
   photos and 6,153 videos kept (from 140,000+ photos and 15,000 videos). Busiest years: 2014
   2,049 photos, 2011 1,872, 2012 1,692, 2013 1,546, 2015 1,437. Photos with a Google edit
-  keep both versions (edit policy "pair"). Videos are not cut yet: 78% of the bytes.
+  keep both versions (edit policy "pair").
+- Delmar: cut videos too. Same 20% per year, in groups apart from photos, ranked on
+  resolution, length, exposure and motion (videos have no embedding). Live Photo clips follow
+  their still.
+- With every proposal accepted: 15,851 photos (12.8 GB) and 1,776 videos (63.3 GB) kept, from
+  468 GB of Google items and 35 GB of iCloud. Next: the review gallery.
 
 ### 2026-10-21: session 2 (continued): the real Photos.app test
 - Both opt-in Photos.app tests pass on the Air with a throwaway library in /tmp: the fixture
