@@ -141,19 +141,19 @@ def test_every_event_gets_its_part_of_the_year() -> None:
     assert [len(kept) for _, kept in found] == [1, 2]
 
 
-def test_favourites_and_album_photos_are_always_kept_and_count_towards_the_share() -> None:
+def test_favourites_are_always_kept_and_count_towards_the_share() -> None:
     shots = [shot(n, at=timedelta(minutes=n), sharpness=400.0) for n in range(1, 11)]
     starred = shot(50, at=timedelta(minutes=20), sharpness=10.0)
-    in_album = shot(51, at=timedelta(minutes=21), sharpness=10.0)
+    also = shot(51, at=timedelta(minutes=21), sharpness=10.0)
     candidates = [
         *free(*shots),
         Candidate(starred, protected="favourite"),
-        Candidate(in_album, protected="album"),
+        Candidate(also, protected="favourite"),
     ]  # 12 photos: a share of 3
 
     [(_, kept)] = select(candidates)
 
-    assert {starred.id, in_album.id} <= kept
+    assert {starred.id, also.id} <= kept
     assert len(kept) == 3
 
 

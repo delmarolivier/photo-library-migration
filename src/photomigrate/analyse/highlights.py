@@ -2,14 +2,14 @@
 
 Delmar's decision (2026-10-28): after duplicates, best-shot losers and clutter, keep only the
 best 20% of each year's photos (``highlights.share``). Videos are left out (reviewed on their
-own), and favourites and album photos are always kept.
+own), and favourites are always kept. Album photos are not: one album holds 29,068 photos.
 
 **Events.** A year's photos are taken in time order and split wherever two shots are more
 than ``event_gap_hours`` apart, so a trip, a party or an afternoon is one event.
 
-**The quota** is the share of the year's photos, rounded up. Favourites and album photos are
-kept whatever the quota, and count towards it. The places left are shared across the events
-in proportion to their unprotected photos (largest remainders; a small event may get none).
+**The quota** is the share of the year's photos, rounded up. Favourites are kept whatever the
+quota, and count towards it. The places left are shared across the events in proportion to
+their other photos (largest remainders; a small event may get none).
 
 **Within an event** photos are ranked as best shot ranks a group (sharpness against the
 event's sharpest, exposure, faces, eyes open, Apple's aesthetic score where every photo has
@@ -41,7 +41,7 @@ from photomigrate.embedding import Embedder, Vector
 from photomigrate.runner import Action, JSONValue
 
 Protection = str
-"""Why a photo is always kept: ``favourite`` or ``album``."""
+"""Why a photo is always kept: ``favourite``."""
 
 
 @dataclass(frozen=True)
@@ -227,7 +227,6 @@ class HighlightsStage:
     def _candidates(self, catalogue: Catalogue) -> dict[int, list[Candidate]]:
         """Each year's photos."""
         set_aside = self._set_aside(catalogue)
-        in_albums = {i for album in catalogue.albums() for i in catalogue.album_members(album.id)}
         years: dict[int, list[Candidate]] = defaultdict(list)
         for item in catalogue.items():
             if (
@@ -240,7 +239,7 @@ class HighlightsStage:
             taken = taken_of(catalogue, item)
             if taken is None:
                 continue
-            protected = "favourite" if item.favorite else "album" if item.id in in_albums else None
+            protected = "favourite" if item.favorite else None
             years[taken.year].append(Candidate(shot_of(item, taken), protected))
         return years
 

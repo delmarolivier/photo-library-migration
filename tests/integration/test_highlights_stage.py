@@ -110,17 +110,21 @@ def roles(path: Path) -> dict[str, str | None]:
         }
 
 
-def test_each_year_keeps_its_share_with_favourites_and_albums_first(
-    path: Path, tmp_path: Path
-) -> None:
+def test_each_year_keeps_its_share_with_favourites_first(path: Path, tmp_path: Path) -> None:
     highlights(path, tmp_path)
 
     found = roles(path)
     kept = {name for name, role in found.items() if role == "keep" and name.startswith("2014")}
-    # 2014 counts 13 photos (10, the favourite, the album photo, the duplicate keeper): 3 kept
-    assert {"2014/starred.JPG", "2014/trip.JPG"} <= kept
-    assert len(kept) == 3
-    assert kept & {"2014/IMG_0003.JPG", "2014/IMG_0006.JPG"}
+    # 2014 counts 13 photos (10, the favourite, the album photo, the duplicate keeper): 3 kept,
+    # the favourite and the two sharpest
+    assert kept == {"2014/starred.JPG", "2014/IMG_0003.JPG", "2014/IMG_0006.JPG"}
+
+
+def test_album_photos_compete_like_any_other(path: Path, tmp_path: Path) -> None:
+    # Delmar: one album holds 29,068 photos, so albums protect nothing
+    highlights(path, tmp_path)
+
+    assert roles(path)["2014/trip.JPG"] == "to-delete"
 
 
 def test_videos_duplicates_best_shot_losers_and_clutter_are_left_out(
@@ -160,10 +164,7 @@ def test_details_hold_the_year_the_picks_and_why_some_are_protected(
             if "google:2014/starred.JPG" in g.details["keep"]
         )
     assert group.details["year"] == 2014
-    assert group.details["protected"] == {
-        "google:2014/starred.JPG": "favourite",
-        "google:2014/trip.JPG": "album",
-    }
+    assert group.details["protected"] == {"google:2014/starred.JPG": "favourite"}
     assert set(group.details["scores"]) >= set(group.details["keep"])
 
 
