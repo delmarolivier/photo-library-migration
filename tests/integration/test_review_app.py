@@ -296,7 +296,7 @@ def test_a_years_highlights_show_the_picks_and_may_keep_none(
         (shown,) = QUEUES["highlights"].cards(catalogue)
         (group,) = catalogue.groups("highlights")
     assert shown.form == "best-shot"
-    assert shown.title.startswith("2021")
+    assert shown.title.startswith("2021 photos: ")
     assert shown.proposal.value == {"keep": group.details["keep"]}
     page = client.get("/queue/highlights")
     assert page.status_code == 200

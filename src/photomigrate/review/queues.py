@@ -168,8 +168,8 @@ def highlights_cards(catalogue: Catalogue) -> list[Card]:
                 subject_id=group.id,
                 kind="highlights",
                 title=(
-                    f"{details['year']}: {len(scores)} photos, {len(kept)} kept "
-                    f"({str(details['start'])[:10]} to {str(details['end'])[:10]})"
+                    f"{details['year']} {details.get('kind', 'photo')}s: {len(scores)}, "
+                    f"{len(kept)} kept ({str(details['start'])[:10]} to {str(details['end'])[:10]})"
                 ),
                 members=shown,
                 proposal=Option("Keep the picks", {"keep": kept}, "a"),

@@ -11,8 +11,10 @@ from photomigrate.analyse.highlights import (
     Candidate,
     allocate,
     events,
+    photo_scores,
     quota,
     select_year,
+    video_score,
 )
 from photomigrate.config import BestShotWeights
 from photomigrate.quality import PhotoMetrics
@@ -64,9 +66,9 @@ def select(
         candidates,
         share=share,
         gap=GAP,
-        weights=BestShotWeights(),
-        appeal=(lambda s: (appeal or {}).get(s.id, 0.5)),
-        appeal_weight=0.4,
+        score=photo_scores(
+            BestShotWeights(), appeal=lambda s: (appeal or {}).get(s.id, 0.5), appeal_weight=0.4
+        ),
         max_similarity=max_similarity,
     )
     return [([s.id for s in e.shots], set(e.keep)) for e in found]
@@ -222,3 +224,38 @@ def test_appeal_reads_the_text_prompts_once() -> None:
     appeal.score(vector)
 
     assert calls == [len(GOOD) + len(BAD)]
+
+
+# --- videos --------------------------------------------------------------------------------
+
+
+def test_a_sharp_well_lit_clip_of_a_minute_beats_a_dark_tiny_two_second_one() -> None:
+    good = video_score(width=1920, height=1080, duration=60.0, brightness=128.0, motion=30.0)
+    poor = video_score(width=320, height=240, duration=2.0, brightness=20.0, motion=0.5)
+
+    assert 0 <= poor < good <= 1
+    assert good == 1.0
+
+
+def test_very_long_videos_and_missing_measurements_score_lower() -> None:
+    minute = video_score(width=1920, height=1080, duration=60.0, brightness=128.0, motion=30.0)
+    hour = video_score(width=1920, height=1080, duration=3600.0, brightness=128.0, motion=30.0)
+    unknown = video_score(width=None, height=None, duration=None, brightness=None, motion=None)
+
+    assert hour < minute
+    assert unknown == 0.0
+
+
+def test_videos_are_ranked_by_their_own_scores() -> None:
+    clips = [shot(n, at=timedelta(minutes=n)) for n in range(1, 11)]
+    scores = {c.id: n / 10 for n, c in enumerate(clips)}
+
+    [event] = select_year(
+        free(*clips),
+        share=0.2,
+        gap=GAP,
+        score=lambda shots: {s.id: scores[s.id] for s in shots},
+        max_similarity=1.0,
+    )
+
+    assert set(event.keep) == {clips[-1].id, clips[-2].id}

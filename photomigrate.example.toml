@@ -54,8 +54,8 @@ eyes_open = 0.2
 aesthetic = 0.15
 
 # Highlights (photomigrate analyse): after duplicates, best shot and clutter, keep the best
-# share of each year's photos (rounded up), spread across its events. Videos are left out;
-# favourites are always kept and count towards the share.
+# share of each year's photos (rounded up), spread across its events, and the same share of
+# its videos. Favourites are always kept and count towards the share.
 [highlights]
 share = 0.2
 # Photos further apart than this many hours are separate events.

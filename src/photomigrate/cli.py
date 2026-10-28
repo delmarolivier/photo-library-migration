@@ -225,8 +225,8 @@ def analyse(
     flag quality problems with scores (thresholds from --config), group similar shots,
     keeping the best two of each (window, similarity and weights from --config), queue
     clutter (screenshots, documents, memes, forwards, Google creations), keep the best share
-    of each year's photos across its events (highlights, from --config), apply the review's
-    answers about dates, and batch the dates still in doubt for the review.
+    of each year's photos and videos across its events (highlights, from --config), apply the
+    review's answers about dates, and batch the dates still in doubt for the review.
 
     Proposals only: the review decides.
     """

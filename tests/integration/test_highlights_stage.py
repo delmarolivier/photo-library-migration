@@ -58,6 +58,33 @@ def add(
     return item_id
 
 
+def video(
+    catalogue: Catalogue,
+    name: str,
+    taken: datetime,
+    *,
+    size: tuple[int, int] = (640, 480),
+    duration: float = 20.0,
+    brightness: float = 128.0,
+    **fields: object,
+) -> int:
+    """A video as ingest records it: a QuickTime date, measurements and no embedding."""
+    item_id = catalogue.upsert_item(
+        CatalogueItem(
+            source="google",
+            source_key=name,
+            kind="video",
+            width=size[0],
+            height=size[1],
+            duration=duration,
+            quality=json.dumps({"brightness": brightness, "motion": 20.0}),
+            **fields,  # type: ignore[arg-type]
+        )
+    )
+    catalogue.set_date_candidate(item_id, "quicktime", taken)
+    return item_id
+
+
 @pytest.fixture
 def path(tmp_path: Path) -> Path:
     path = tmp_path / "catalogue.sqlite"
@@ -71,8 +98,19 @@ def path(tmp_path: Path) -> Path:
         catalogue.add_album_member(
             album, add(catalogue, "2014/trip.JPG", T2014 + timedelta(minutes=21), seed=41)
         )
-        # a video, a duplicate, a best-shot loser and clutter: none of them count
-        add(catalogue, "2014/clip.MP4", T2014 + timedelta(minutes=30), seed=50, kind="video")
+        # five videos: one Full HD minute, the others small and dark; a favourite video
+        video(catalogue, "2014/clip.MP4", T2014 + timedelta(minutes=30), size=(1920, 1080),
+              duration=60.0)  # fmt: skip
+        for n in range(4):
+            video(catalogue, f"2014/dark_{n}.MP4", T2014 + timedelta(minutes=31 + n),
+                  brightness=30.0, duration=3.0)  # fmt: skip
+        video(catalogue, "2014/loved.MP4", T2014 + timedelta(minutes=40), favorite=True)
+        # a Live Photo: its motion clip follows the still and is no video of its own
+        still = add(catalogue, "2014/live.JPG", T2014 + timedelta(minutes=50), seed=45)
+        motion = video(catalogue, "2014/live.MOV", T2014 + timedelta(minutes=50), duration=2.0)
+        group = catalogue.upsert_group("live-pair", "live-a", {})
+        catalogue.set_group_members(group, [(still, "still", 0), (motion, "motion", 1)])
+        # a duplicate, a best-shot loser and clutter: none of them count
         keeper = add(catalogue, "2014/dup-keeper.JPG", T2014 + timedelta(hours=1), seed=51)
         copy = add(catalogue, "2014/dup-copy.JPG", T2014 + timedelta(hours=1), seed=51)
         group = catalogue.upsert_group("duplicate", "dup-a", {"keeper": "x", "method": "exact"})
@@ -114,9 +152,13 @@ def test_each_year_keeps_its_share_with_favourites_first(path: Path, tmp_path: P
     highlights(path, tmp_path)
 
     found = roles(path)
-    kept = {name for name, role in found.items() if role == "keep" and name.startswith("2014")}
-    # 2014 counts 13 photos (10, the favourite, the album photo, the duplicate keeper): 3 kept,
-    # the favourite and the two sharpest
+    kept = {
+        name
+        for name, role in found.items()
+        if role == "keep" and name.startswith("2014") and name.endswith(".JPG")
+    }
+    # 2014 counts 14 photos (10, the favourite, the album photo, the Live Photo, the duplicate
+    # keeper): 3 kept, the favourite and the two sharpest
     assert kept == {"2014/starred.JPG", "2014/IMG_0003.JPG", "2014/IMG_0006.JPG"}
 
 
@@ -127,14 +169,36 @@ def test_album_photos_compete_like_any_other(path: Path, tmp_path: Path) -> None
     assert roles(path)["2014/trip.JPG"] == "to-delete"
 
 
-def test_videos_duplicates_best_shot_losers_and_clutter_are_left_out(
+def test_duplicates_best_shot_losers_and_clutter_are_left_out(path: Path, tmp_path: Path) -> None:
+    highlights(path, tmp_path)
+
+    found = roles(path)
+    for name in ("dup-copy.JPG", "burst-loser.JPG", "screenshot.PNG"):
+        assert f"2014/{name}" not in found
+
+
+def test_each_years_videos_keep_their_share_in_groups_of_their_own(
     path: Path, tmp_path: Path
 ) -> None:
     highlights(path, tmp_path)
 
+    with Catalogue.open(path) as catalogue:
+        (group,) = [g for g in catalogue.groups("highlights") if g.details["kind"] == "video"]
+        members = {catalogue.item(i).source_key: r for i, r, _ in catalogue.group_members(group.id)}
+    # six videos (the Live Photo's clip is not one): a share of 2, the favourite and the best
+    assert group.details["year"] == 2014
+    assert {n for n, r in members.items() if r == "keep"} == {"2014/loved.MP4", "2014/clip.MP4"}
+    assert {n for n, r in members.items() if r == "to-delete"} == {
+        f"2014/dark_{n}.MP4" for n in range(4)
+    }
+
+
+def test_a_live_photos_clip_goes_with_its_still(path: Path, tmp_path: Path) -> None:
+    highlights(path, tmp_path)
+
     found = roles(path)
-    for name in ("clip.MP4", "dup-copy.JPG", "burst-loser.JPG", "screenshot.PNG"):
-        assert f"2014/{name}" not in found
+    assert found["2014/live.MOV"] == "motion"
+    assert found["2014/live.JPG"] == "to-delete"
 
 
 def test_every_event_of_a_year_gets_a_group_of_its_own(path: Path, tmp_path: Path) -> None:
@@ -144,6 +208,7 @@ def test_every_event_of_a_year_gets_a_group_of_its_own(path: Path, tmp_path: Pat
         years = sorted(
             (g.details["year"], len(catalogue.group_members(g.id)))
             for g in catalogue.groups("highlights")
+            if g.details["kind"] == "photo"
         )
     # 2015: 5 photos, a share of 1, which goes to the larger day; the other day keeps
     # nothing, so it is still asked about
@@ -210,3 +275,34 @@ def test_an_action_for_an_item_that_is_gone_is_an_error(tmp_path: Path) -> None:
     stage = HighlightsStage(HighlightsConfig(), BestShotWeights(), appeal=None)
     with Catalogue.snapshot(tmp_path / "none") as catalogue, pytest.raises(KeyError, match="GONE"):
         stage.apply(action, catalogue)
+
+
+def test_videos_are_dated_by_quicktime_then_icloud_then_the_planned_date(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "videos.sqlite"
+    with Catalogue.open(path) as catalogue:
+        when = datetime(2019, 3, 1, 9, 0, tzinfo=UTC)
+        video(catalogue, "2019/good.MP4", when, size=(1920, 1080), duration=60.0)
+        catalogue.upsert_item(
+            CatalogueItem(
+                source="google", source_key="2019/planned.MP4", kind="video", duration=3.0,
+                metadata_plan=json.dumps({"taken": (when + timedelta(minutes=1)).isoformat()}),
+            )
+        )  # fmt: skip
+        apple = catalogue.upsert_item(
+            CatalogueItem(source="icloud", source_key="UUID-V", kind="video", duration=3.0)
+        )
+        catalogue.set_date_candidate(apple, "icloud", when + timedelta(minutes=2))
+        catalogue.upsert_item(
+            CatalogueItem(source="google", source_key="2019/undated.MP4", kind="video")
+        )
+
+    highlights(path, tmp_path)
+
+    found = roles(path)
+    assert found == {
+        "2019/good.MP4": "keep",
+        "2019/planned.MP4": "to-delete",
+        "UUID-V": "to-delete",
+    }

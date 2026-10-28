@@ -89,7 +89,8 @@ class BestShotConfig:
 @dataclass(frozen=True)
 class HighlightsConfig:
     share: float = 0.2
-    """The share of each year's photos kept (Delmar: the best 20%), rounded up."""
+    """The share of each year's photos, and of its videos, kept (Delmar: the best 20%), rounded
+    up."""
     event_gap_hours: float = 6.0
     """Photos further apart than this are separate events."""
     max_similarity: float = 0.9
