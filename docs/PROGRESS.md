@@ -1,32 +1,45 @@
 # Progress log
 
 ## Current state
-- Milestone: 3. Quality and review
-- Last completed issue: [M4-03] CLA-91 (reconciliation report). M4-04 (CLA-92): the runbook
-  is written (docs/RUNBOOK.md). Every issue that needs no human action is done.
-- Next: Delmar reviews the runbook, then runs the rehearsal with Claude (CLA-92).
+- Milestone: 4. The real migration (CLA-92), running on the Air itself.
+- Done (2026-10-27/28): the 46 Takeout parts (three archives, 444 GB) are on the drive
+  `/Volumes/Photos` (plain APFS, 1.8 TB), each zip-tested with its `.sha256`. Ingest dry run
+  done; `ingest --apply` running on the full Takeout (Delmar asked to go ahead without a GO
+  for the Google-only steps). Then `analyse` on the Google items alone.
+- Next: Delmar moves the Photos library to `/Volumes/Photos`, turns on Download Originals and
+  gives the Claude app Full Disk Access (planned 2026-10-28). Then `index`, re-`analyse`, and
+  the review in the gallery. Nothing touches the library before that, and `import --apply`
+  still needs Delmar's GO.
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
-  - The rehearsal (CLA-92) once the drive is there: it imports the one-album sample into the
-    real library on the Air, with a GO before each `--apply`. Delmar reviewed the runbook on
-    2026-10-21.
-  - The rehearsal (CLA-92) once the drive is there: it imports the one-album sample into the
-    real library on the Air, with a GO before each `--apply`. Delmar reviewed the runbook on
-    2026-10-21.
-  - Needs you: run the real Photos.app import test once on the Air. Create an empty library
-    under /tmp in Photos (hold Option at launch), open it, and allow Automation. Then run
-    `PHOTOMIGRATE_PHOTOS_APP_LIBRARY=/tmp/… uv run pytest tests/macos/test_photos_app_import.py -m macos --no-cov`
-    in Terminal (with Full Disk Access) at the Air.
-  - The external APFS drive (2 TB or more, 4 TB to be comfortable) for the MacBook Air: Delmar
-    is getting one (2026-10-21). Then download the 12 Takeout parts onto it before the links
-    expire (about 2026-10-27, a week after the export).
-  - Before the first real `index` (CLAUDE.md rule 10):
-    - move the Photos library onto the external drive and turn on "Download Originals";
-    - give `sshd-keygen-wrapper` Full Disk Access (System Settings > Privacy & Security);
-    - quit Photos while indexing;
-    - give the go-ahead.
+  - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
+    real Takeout instead, or skip the rehearsal and go straight to the batched full import?
+  - Space: Takeout 445 GB + library after import + one backup copy of the pre-import library.
+    Likely fits on 1.8 TB; confirmed once the library size is known.
+  - 13 unknown files in the Takeout (two `.3g2` videos, extension-less `IMG_0335`-style files,
+    `.smx`): they are flagged, not ingested. Decide whether to support `.3g2`.
 
 ## Session log
+### 2026-10-27/28: session 3: the real Takeout on the Air
+- Takeout: 46 parts in three archives (`-1-001..022`, `-2-001..023`, `-3-001`), 444 GB,
+  downloaded in Chrome straight to `/Volumes/Photos/takeout` (copied cookies stopped working
+  within a minute: Chrome binds the Google session to the browser, so
+  `scripts/download-takeout.sh` could not be used). Every part passed `unzip -t`; a `.sha256`
+  per part, in the script's format.
+- Drive: reformatted from case-sensitive to plain APFS (Photos libraries need it), renamed
+  `Photos`, ownership enabled, owned by Delmar.
+- Fix: several archives. Google numbers clashing names within an archive, not across them:
+  4,625 media paths are in two or three archives with different contents. Entries now have an
+  `archive` and a `key` (`Takeout-<n>/...` outside archive 1); sidecars match per archive,
+  albums per folder. `Takeout.entry()` is a dict lookup (was a scan per item).
+- Fix: macOS 27 Vision raises "key does not exist" for an empty options dict; pass None. The
+  15 macOS tests that failed on the Air pass.
+- Ingest dry run: 153,302 items (136,064 photos, 17,238 videos, 477 GB), 58 albums; matches:
+  99,003 exact, 44,085 edited-original, 10,214 without a sidecar; 648 orphan sidecars;
+  13 unknown files.
+- Branch `fix/takeout-multiple-archives` (2 commits, 1,182 tests, 100%): pushing was blocked
+  by this session's permission check; Delmar to approve the push and PR.
+
 ### 2026-10-21: session 2 (continued): the real Photos.app test
 - Both opt-in Photos.app tests pass on the Air with a throwaway library in /tmp: the fixture
   import (albums, favourite, caption, keywords), and a genuine iPhone Live Photo, which Photos
