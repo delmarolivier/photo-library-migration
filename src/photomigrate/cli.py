@@ -20,6 +20,7 @@ from photomigrate.analyse.date_fixes import DateFixStage
 from photomigrate.analyse.dedupe_photo import DedupeConfig, DedupeStage
 from photomigrate.analyse.dedupe_video import VideoDedupeConfig, VideoDedupeStage
 from photomigrate.analyse.edited import EditedVersionsStage
+from photomigrate.analyse.highlights import Appeal, HighlightsStage
 from photomigrate.analyse.locations import LocationStage
 from photomigrate.analyse.quality import QualityStage
 from photomigrate.catalogue import Catalogue
@@ -223,7 +224,8 @@ def analyse(
     """Link edits to originals, propose duplicate groups (photos and videos) with keepers,
     flag quality problems with scores (thresholds from --config), group similar shots,
     keeping the best two of each (window, similarity and weights from --config), queue
-    clutter (screenshots, documents, memes, forwards, Google creations), apply the review's
+    clutter (screenshots, documents, memes, forwards, Google creations), keep the best share
+    of each year's photos across its events (highlights, from --config), apply the review's
     answers about dates, and batch the dates still in doubt for the review.
 
     Proposals only: the review decides.
@@ -245,6 +247,11 @@ def analyse(
         QualityStage(settings.config.quality),
         BestShotStage(settings.config.best_shot),
         ClutterStage(settings.config.clutter, ZeroShot(default_embedder())),
+        HighlightsStage(
+            settings.config.highlights,
+            settings.config.best_shot.weights,
+            appeal=Appeal(default_embedder()),
+        ),
         LocationStage(settings.config.location, places, zone),
         DateFixStage(),
         DateAuditStage(now=datetime.now(UTC)),

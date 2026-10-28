@@ -35,6 +35,7 @@
   {% set kept = (card.decision or card.proposal.value)["keep"] %}
   <form hx-post="/decide/best-shot" hx-target="closest article" hx-swap="outerHTML">
     <input type="hidden" name="subject_id" value="{{ card.subject_id }}">
+    <input type="hidden" name="kind" value="{{ card.kind }}">
     {% for member in card.members %}{% if member.role != "motion" %}
     <label><input type="checkbox" name="keep" value="{{ member.name }}"{% if member.name in kept %} checked{% endif %}> {{ loop.index }}</label>
     {% endif %}{% endfor %}

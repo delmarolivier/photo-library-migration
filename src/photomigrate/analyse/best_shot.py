@@ -181,7 +181,7 @@ def rank(shots: Sequence[Shot], weights: BestShotWeights) -> Ranking:
 _LEFT_OUT = frozenset({"edited", "google-creation"})
 
 
-def _taken(catalogue: Catalogue, item: CatalogueItem) -> datetime | None:
+def taken_of(catalogue: Catalogue, item: CatalogueItem) -> datetime | None:
     found = catalogue.date_candidates(cast(int, item.id))
     for source in ("exif", "icloud"):
         if source in found:
@@ -190,7 +190,7 @@ def _taken(catalogue: Catalogue, item: CatalogueItem) -> datetime | None:
     return datetime.fromisoformat(planned) if planned else None
 
 
-def _shot(item: CatalogueItem, taken: datetime) -> Shot:
+def shot_of(item: CatalogueItem, taken: datetime) -> Shot:
     measured = json.loads(item.quality)
     faces = faces_from_json(item.faces)
     vector = from_bytes(cast(bytes, item.embedding))
@@ -238,9 +238,9 @@ class BestShotStage:
                 or (item.source == "google" and _LEFT_OUT & item.flags)
             ):
                 continue
-            taken = _taken(catalogue, item)
+            taken = taken_of(catalogue, item)
             if taken is not None:
-                shots.append(_shot(item, taken))
+                shots.append(shot_of(item, taken))
         return shots
 
     def plan(self, catalogue: Catalogue) -> Iterator[Action]:

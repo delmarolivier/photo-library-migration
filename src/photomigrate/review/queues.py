@@ -10,6 +10,7 @@ Decisions:
 * ``duplicate`` (group): ``{"keeper": "source:key"}`` (the copies are duplicates, kept as this
   one) or ``{"reject": true}`` (not duplicates);
 * ``best-shot`` (group): ``{"keep": ["source:key", ...]}``, the rest go to "To Delete";
+* ``highlights`` (group): the same, for one event of a year (it may keep none);
 * ``edit-pair`` (group): ``{"keep": ["Takeout path", ...]}``;
 * ``date`` (group): the answers in ``analyse.date_fixes``;
 * ``clutter``, ``quality``, ``unmatched`` (item): ``{"reject": true}`` (do not import, or move to
@@ -139,6 +140,40 @@ def best_shot_cards(catalogue: Catalogue) -> list[Card]:
                 members=shown,
                 proposal=Option("Keep the top two", {"keep": list(group.details["keep"])}, "a"),
                 decision=catalogue.decision("group", group.id, "best-shot"),
+                form="best-shot",
+            )
+        )
+    return cards
+
+
+def highlights_cards(catalogue: Catalogue) -> list[Card]:
+    cards = []
+    for group in catalogue.groups("highlights"):
+        details = group.details
+        members = _members(catalogue, group.id)
+        scores, protected = details.get("scores", {}), details.get("protected", {})
+        shown = tuple(
+            _member(
+                item,
+                role,
+                *([f"score {scores[_name(item)]:.2f}"] if _name(item) in scores else []),
+                *([f"always kept: {protected[_name(item)]}"] if _name(item) in protected else []),
+            )
+            for item, role in members
+        )
+        kept = list(details["keep"])
+        cards.append(
+            Card(
+                subject="group",
+                subject_id=group.id,
+                kind="highlights",
+                title=(
+                    f"{details['year']}: {len(scores)} photos, {len(kept)} kept "
+                    f"({str(details['start'])[:10]} to {str(details['end'])[:10]})"
+                ),
+                members=shown,
+                proposal=Option("Keep the picks", {"keep": kept}, "a"),
+                decision=catalogue.decision("group", group.id, "highlights"),
                 form="best-shot",
             )
         )
@@ -318,6 +353,8 @@ QUEUES: dict[str, Queue] = {
               "The proposed keeper is first; pick another with 1 to 9."),
         Queue("best-shot", "Best shot", "best-shot", "group", best_shot_cards,
               "The top two are ticked; change the ticks, then save."),
+        Queue("highlights", "Highlights", "highlights", "group", highlights_cards,
+              "Each year's best photos, one event at a time; change the ticks, then save."),
         Queue("edit-pairs", "Edited versions", "edit-pair", "group", edit_pair_cards,
               "Original and Google edit side by side."),
         Queue("dates", "Dates", "date", "group", date_cards,

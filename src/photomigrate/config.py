@@ -87,6 +87,27 @@ class BestShotConfig:
 
 
 @dataclass(frozen=True)
+class HighlightsConfig:
+    share: float = 0.2
+    """The share of each year's photos kept (Delmar: the best 20%), rounded up."""
+    event_gap_hours: float = 6.0
+    """Photos further apart than this are separate events."""
+    max_similarity: float = 0.9
+    """A photo at least this like one already kept (cosine of open_clip embeddings) waits until
+    nothing else is left."""
+    appeal_weight: float = 0.4
+    """How much open_clip's judgement of a good photo counts against the best-shot scores."""
+
+    def __post_init__(self) -> None:
+        if not 0 < self.share <= 1:
+            raise ConfigError("'highlights.share' must be above 0 and at most 1")
+        if self.max_similarity > 1:
+            raise ConfigError("'highlights.max_similarity' must be at most 1")
+        if self.appeal_weight > 1:
+            raise ConfigError("'highlights.appeal_weight' must be at most 1")
+
+
+@dataclass(frozen=True)
 class ClutterConfig:
     min_score: float = 0.5
     """An item joins the clutter queue when its best category scores at least this (0 to 1)."""
@@ -118,6 +139,7 @@ class ImportConfig:
 class Config:
     quality: QualityConfig = field(default_factory=QualityConfig)
     best_shot: BestShotConfig = field(default_factory=BestShotConfig)
+    highlights: HighlightsConfig = field(default_factory=HighlightsConfig)
     clutter: ClutterConfig = field(default_factory=ClutterConfig)
     location: LocationConfig = field(default_factory=LocationConfig)
     importer: ImportConfig = field(default_factory=ImportConfig, metadata={"toml": "import"})

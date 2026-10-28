@@ -193,6 +193,27 @@ def test_group_kinds_cover_duplicates_best_shots_date_batches_and_live_pairs(
     assert len(dump(path)["groups"]) == 4
 
 
+def test_v17_upgrade_keeps_groups_and_members_and_allows_highlights(tmp_path: Path) -> None:
+    path = tmp_path / "v16.sqlite"
+    conn = sqlite3.connect(path, isolation_level=None)
+    migrate(conn, MIGRATIONS[:16])
+    conn.execute(
+        "INSERT INTO items (id, source, source_key, kind, created_at, updated_at)"
+        " VALUES (1, 'google', 'a', 'photo', 't', 't')"
+    )
+    conn.execute("INSERT INTO groups (id, kind, key, created_at) VALUES (5, 'edit-pair', 'k', 't')")
+    conn.execute(
+        "INSERT INTO group_members (group_id, item_id, role, rank) VALUES (5, 1, 'original', 0)"
+    )
+    conn.close()
+
+    with Catalogue.open(path) as catalogue:
+        (pair,) = catalogue.groups("edit-pair")
+        assert catalogue.group_members(pair.id) == [(1, "original", 0)]
+        event = catalogue.upsert_group("highlights", "hl-a", {"year": 2014})
+        assert [g.id for g in catalogue.groups("highlights")] == [event]
+
+
 # --- items and date candidates -------------------------------------------------------------------
 
 

@@ -19,11 +19,19 @@ from photomigrate.analyse.clutter import ClutterStage
 from photomigrate.analyse.date_audit import DateAuditStage
 from photomigrate.analyse.dedupe_photo import DedupeStage
 from photomigrate.analyse.edited import EditedVersionsStage
+from photomigrate.analyse.highlights import HighlightsStage
 from photomigrate.analyse.locations import LocationStage
 from photomigrate.analyse.quality import QualityStage
 from photomigrate.catalogue import Catalogue
 from photomigrate.cli import app as cli
-from photomigrate.config import BestShotConfig, ClutterConfig, Config, LocationConfig
+from photomigrate.config import (
+    BestShotConfig,
+    BestShotWeights,
+    ClutterConfig,
+    Config,
+    HighlightsConfig,
+    LocationConfig,
+)
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.review import app as review
@@ -78,6 +86,7 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
     for step in (
         LivePhotoStage(), EditedVersionsStage(), DedupeStage(), QualityStage(Config().quality),
         BestShotStage(BestShotConfig(min_similarity=0.9)), ClutterStage(ClutterConfig()),
+        HighlightsStage(HighlightsConfig(), BestShotWeights(), appeal=None),
         LocationStage(LocationConfig()), DateAuditStage(now=NOW),
     ):  # fmt: skip
         run_stage(step, **common)  # type: ignore[arg-type]
@@ -278,6 +287,33 @@ def test_best_shot_picks_are_any_members_but_at_least_one(
     assert (stranger.status_code, nothing.status_code) == (400, 400)
     missing = client.post("/decide/best-shot", data={"subject_id": "999999", "keep": names[:1]})
     assert missing.status_code == 404
+
+
+def test_a_years_highlights_show_the_picks_and_may_keep_none(
+    client: TestClient, catalogue_path: Path
+) -> None:
+    with Catalogue.open(catalogue_path) as catalogue:
+        (shown,) = QUEUES["highlights"].cards(catalogue)
+        (group,) = catalogue.groups("highlights")
+    assert shown.form == "best-shot"
+    assert shown.title.startswith("2021")
+    assert shown.proposal.value == {"keep": group.details["keep"]}
+    page = client.get("/queue/highlights")
+    assert page.status_code == 200
+    assert 'name="kind" value="highlights"' in page.text
+
+    names = sorted(group.details["scores"])
+    picked = client.post(
+        "/decide/best-shot",
+        data={"subject_id": group.id, "kind": "highlights", "keep": names[-1:]},
+    )
+    assert picked.status_code == 200
+    assert decision(catalogue_path, "group", group.id, "highlights") == {"keep": names[-1:]}
+    none = client.post("/decide/best-shot", data={"subject_id": group.id, "kind": "highlights"})
+    assert none.status_code == 200
+    assert decision(catalogue_path, "group", group.id, "highlights") == {"keep": []}
+    wrong = client.post("/decide/best-shot", data={"subject_id": group.id, "kind": "clutter"})
+    assert wrong.status_code == 400
 
 
 def test_bulk_decisions_cover_a_whole_category(client: TestClient, catalogue_path: Path) -> None:

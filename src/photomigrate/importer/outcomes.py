@@ -5,17 +5,20 @@ Every Google item gets exactly one outcome:
 * ``import``: it goes into iCloud Photos;
 * ``duplicate-of-existing``: the review confirmed it is a copy of ``partner``, which is in
   iCloud or imported;
-* ``rejected-by-user``: the review said no (a best-shot loser, clutter, quality, unmatched,
-  or the version of an edit pair the review did not keep);
+* ``rejected-by-user``: the review said no (a best-shot loser, a photo left out of its year's
+  highlights, clutter, quality, unmatched, or the version of an edit pair the review did not
+  keep); an edit shares its original's clutter and highlights answers;
 * ``follows``: a Live Photo's motion clip, imported with its still (``partner``);
-* ``pending``: a question that decides it is still unanswered (a duplicate or best-shot
-  group, or a Google creation, which is never imported without a yes).
+* ``pending``: a question that decides it is still unanswered (a duplicate, best-shot or
+  highlights group, or a Google creation, which is never imported without a yes).
 
-A confirmed duplicate wins over a rejection, a rejection over a pending question.
+A confirmed duplicate wins over a rejection, a rejection over a pending question, except that
+the copies of a keeper the review turned down are turned down with it (``partner``).
 
 Existing iCloud items the review rejected (a confirmed duplicate of another item, a
-best-shot loser, clutter, quality or unmatched) go to the "To Delete" album (``to_delete``):
-Delmar deletes them by hand. Nothing here deletes anything.
+best-shot loser, one left out of its year's highlights, clutter, quality or unmatched) go to
+the "To Delete" album (``to_delete``): Delmar deletes them by hand. Nothing here deletes
+anything.
 """
 
 from __future__ import annotations
@@ -49,7 +52,7 @@ class _Verdicts:
     pending: dict[int, list[str]] = field(default_factory=lambda: defaultdict(list))
     follows: dict[int, int] = field(default_factory=dict)
     original_of: dict[int, int] = field(default_factory=dict)
-    """An edited copy's original, whose clutter answer it shares."""
+    """An edited copy's original, whose clutter and highlights answers it shares."""
 
 
 def _verdicts(catalogue: Catalogue) -> _Verdicts:
@@ -71,17 +74,18 @@ def _verdicts(catalogue: Catalogue) -> _Verdicts:
             for i, _ in members:
                 if i != keeper:
                     found.duplicate_of[i] = keeper
-    for group in catalogue.groups("best-shot"):
-        listed = catalogue.group_members(group.id)
-        if not any(role == "to-delete" for _, role, _ in listed):
-            continue  # a pair keeps both, and the review is never asked
-        shots = [i for i, role, _ in listed if role != "motion"]
-        answer = catalogue.decision("group", group.id, "best-shot")
-        for i in shots:
-            if answer is None:
-                found.pending[i].append("best-shot")
-            elif names[i] not in answer.get("keep", []):
-                found.rejected[i].append("best-shot")
+    for kind in ("best-shot", "highlights"):
+        for group in catalogue.groups(kind):
+            listed = catalogue.group_members(group.id)
+            if not any(role == "to-delete" for _, role, _ in listed):
+                continue  # a pair keeps both, and the review is never asked
+            shots = [i for i, role, _ in listed if role != "motion"]
+            answer = catalogue.decision("group", group.id, kind)
+            for i in shots:
+                if answer is None:
+                    found.pending[i].append(kind)
+                elif names[i] not in answer.get("keep", []):
+                    found.rejected[i].append(kind)
     for group in catalogue.groups("edit-pair"):
         (original, _, _), (edited, _, _) = catalogue.group_members(group.id)
         found.original_of[edited] = original
@@ -96,11 +100,11 @@ def _verdicts(catalogue: Catalogue) -> _Verdicts:
             if answer is not None and answer.get("reject") is True:
                 found.rejected[item_id].append(kind)
     for edited, original in found.original_of.items():  # an edit is not asked about itself
-        if (
-            "clutter" in found.rejected.get(original, [])
-            and "clutter" not in found.rejected[edited]
-        ):
-            found.rejected[edited].append("clutter")
+        for reason in ("clutter", "highlights"):
+            if reason in found.rejected.get(original, []) and reason not in found.rejected[edited]:
+                found.rejected[edited].append(reason)
+        if "highlights" in found.pending.get(original, []):
+            found.pending[edited].append("highlights")
     return found
 
 
@@ -120,7 +124,12 @@ def outcomes(catalogue: Catalogue) -> dict[int, Outcome]:
             result[item_id] = Outcome(item_id, "follows", "live photo", found.follows[item_id])
         elif item_id in found.duplicate_of:
             partner = found.duplicate_of[item_id]
-            result[item_id] = Outcome(item_id, "duplicate-of-existing", "duplicates", partner)
+            if partner is not None and found.rejected.get(partner):
+                # the keeper itself was turned down: its copies go with it
+                reason = found.rejected[partner][0]
+                result[item_id] = Outcome(item_id, "rejected-by-user", reason, partner)
+            else:
+                result[item_id] = Outcome(item_id, "duplicate-of-existing", "duplicates", partner)
         elif found.rejected.get(item_id):
             result[item_id] = Outcome(item_id, "rejected-by-user", found.rejected[item_id][0])
         elif found.pending.get(item_id):

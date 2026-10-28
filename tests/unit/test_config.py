@@ -135,3 +135,34 @@ def test_import_batches_have_a_size(tmp_path: Path) -> None:
         load_config(write(tmp_path, "[import]\nbatch_gigabytes = 5\n")).importer.batch_gigabytes
         == 5.0
     )
+
+
+def test_highlights_default_to_a_fifth_of_each_year() -> None:
+    highlights = Config().highlights
+
+    assert highlights.share == 0.2
+    assert highlights.event_gap_hours == 6.0
+    assert highlights.max_similarity == 0.9
+    assert highlights.appeal_weight == 0.4
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("[highlights]\nshare = 0\n", "'highlights.share' must be above 0 and at most 1"),
+        ("[highlights]\nshare = 1.5\n", "'highlights.share' must be above 0 and at most 1"),
+        ("[highlights]\nappeal_weight = 2\n", "'highlights.appeal_weight' must be at most 1"),
+        ("[highlights]\nmax_similarity = 1.2\n", "'highlights.max_similarity' must be at most 1"),
+    ],
+)
+def test_highlights_settings_that_cannot_work_are_errors(
+    tmp_path: Path, text: str, message: str
+) -> None:
+    with pytest.raises(ConfigError, match=re.escape(message)):
+        load_config(write(tmp_path, text))
+
+
+def test_the_highlights_share_can_be_changed(tmp_path: Path) -> None:
+    config = load_config(write(tmp_path, "[highlights]\nshare = 0.1\n"))
+
+    assert config.highlights.share == 0.1

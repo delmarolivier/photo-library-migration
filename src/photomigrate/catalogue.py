@@ -284,6 +284,25 @@ SCHEMA_V16 = """
 ALTER TABLE items ADD COLUMN size INTEGER;
 """
 
+SCHEMA_V17 = """
+-- A new group kind, 'highlights': one year's event, its best photos kept (see
+-- photomigrate.analyse.highlights). The table is rebuilt as in v8.
+CREATE TABLE groups_v17 (
+    id         INTEGER PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN (
+        'duplicate', 'best-shot', 'date-batch', 'live-pair', 'edit-pair', 'highlights'
+    )),
+    key        TEXT NOT NULL,
+    details    TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    UNIQUE (kind, key)
+);
+INSERT INTO groups_v17 (id, kind, key, details, created_at)
+    SELECT id, kind, key, details, created_at FROM groups;
+DROP TABLE groups;
+ALTER TABLE groups_v17 RENAME TO groups;
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial schema", SCHEMA_V1),
     Migration(2, "metadata plans", SCHEMA_V2),
@@ -301,9 +320,10 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(14, "imports", SCHEMA_V14),
     Migration(15, "staged for To Delete", SCHEMA_V15),
     Migration(16, "sizes", SCHEMA_V16),
+    Migration(17, "highlights", SCHEMA_V17),
 )
 
-GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair"]
+GroupKind = Literal["duplicate", "best-shot", "date-batch", "live-pair", "edit-pair", "highlights"]
 Subject = Literal["item", "group"]
 
 

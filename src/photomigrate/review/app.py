@@ -168,16 +168,23 @@ def create_app(
         request: Request,
         subject_id: Annotated[int, Form()],
         keep: Annotated[list[str] | None, Form()] = None,
+        kind: Annotated[str, Form()] = "best-shot",
     ) -> Response:
+        """Picks for a best-shot group, or for a year's event in the highlights (which may keep
+        none of its photos)."""
+        if kind not in ("best-shot", "highlights"):
+            raise HTTPException(400, f"{kind}: not a group of picks")
         with open_catalogue() as catalogue:
-            group = next((g for g in catalogue.groups("best-shot") if g.id == subject_id), None)
+            group = next((g for g in catalogue.groups(kind) if g.id == subject_id), None)  # type: ignore[arg-type]
             if group is None:
-                raise HTTPException(404, f"no best-shot group {subject_id}")
+                raise HTTPException(404, f"no {kind} group {subject_id}")
             picks = keep or []
-            if not picks or not set(picks) <= set(group.details["scores"]):
+            if not set(picks) <= set(group.details["scores"]):
+                raise HTTPException(400, "keep only the group's own shots")
+            if not picks and kind == "best-shot":
                 raise HTTPException(400, "keep at least one of the group's own shots")
-            record(catalogue, "group", subject_id, "best-shot", {"keep": picks})
-            return render_card(request, catalogue, "best-shot", subject_id)
+            record(catalogue, "group", subject_id, kind, {"keep": picks})
+            return render_card(request, catalogue, kind, subject_id)
 
     @app.post("/bulk")
     def bulk(

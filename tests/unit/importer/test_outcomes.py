@@ -189,3 +189,59 @@ def test_a_best_shot_pair_keeps_both_without_being_asked(cat: Catalogue) -> None
           keep=[name(cat, a), name(cat, b)])  # fmt: skip
 
     assert {outcomes(cat)[i].status for i in (a, b)} == {"import"}, "the gallery never asks"
+
+
+def test_photos_a_years_highlights_leave_out_are_rejected_once_the_review_picks(
+    cat: Catalogue,
+) -> None:
+    a, b, c = (google(cat, f"IMG_11{n}.JPG") for n in range(3))
+    event = group(cat, "highlights", "hl-1", [(a, "keep"), (b, "to-delete"), (c, "to-delete")],
+                  keep=[name(cat, a)], year=2014)  # fmt: skip
+
+    assert {outcomes(cat)[i].status for i in (a, b, c)} == {"pending"}
+    cat.set_decision("group", event, "highlights", {"keep": [name(cat, a), name(cat, c)]})
+
+    found = outcomes(cat)
+    assert (found[a].status, found[b], found[c].status) == (
+        "import", Outcome(b, "rejected-by-user", "highlights"), "import",
+    )  # fmt: skip
+
+
+def test_an_edit_follows_its_originals_place_in_the_highlights(cat: Catalogue) -> None:
+    original, other = google(cat, "IMG_1200.JPG"), google(cat, "IMG_1201.JPG")
+    edit = google(cat, "IMG_1200-edited.JPG", flags=frozenset({"edited"}))
+    keys = [f"{ROOT}/IMG_1200.JPG", f"{ROOT}/IMG_1200-edited.JPG"]
+    group(cat, "edit-pair", keys[1], [(original, "original"), (edit, "edited")],
+          policy="pair", keep=keys)  # fmt: skip
+    event = group(cat, "highlights", "hl-2", [(other, "keep"), (original, "to-delete")],
+                  keep=[name(cat, other)], year=2015)  # fmt: skip
+
+    assert outcomes(cat)[edit].status == "pending"
+    cat.set_decision("group", event, "highlights", {"keep": [name(cat, other)]})
+    assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "highlights")
+    cat.set_decision("group", event, "highlights", {"keep": [name(cat, original)]})
+    assert outcomes(cat)[edit].status == "import"
+
+
+def test_icloud_photos_left_out_of_the_highlights_go_to_to_delete(cat: Catalogue) -> None:
+    a, b = icloud(cat, "U20"), icloud(cat, "U21")
+    event = group(cat, "highlights", "hl-3", [(a, "keep"), (b, "to-delete")],
+                  keep=[name(cat, a)], year=2022)  # fmt: skip
+    cat.set_decision("group", event, "highlights", {"keep": [name(cat, a)]})
+
+    assert to_delete(cat) == {b: "highlights"}
+
+
+def test_a_copy_of_a_keeper_the_review_rejects_is_rejected_with_it(cat: Catalogue) -> None:
+    keeper, copy, other = (google(cat, f"IMG_13{n}.JPG") for n in range(3))
+    dup = group(cat, "duplicate", "dup-13", [(keeper, "keeper"), (copy, "duplicate")],
+                keeper=name(cat, keeper), method="exact")  # fmt: skip
+    event = group(cat, "highlights", "hl-13", [(other, "keep"), (keeper, "to-delete")],
+                  keep=[name(cat, other)], year=2013)  # fmt: skip
+    cat.set_decision("group", dup, "duplicate", {"keeper": name(cat, keeper)})
+    cat.set_decision("group", event, "highlights", {"keep": [name(cat, other)]})
+
+    found = outcomes(cat)
+
+    assert found[keeper] == Outcome(keeper, "rejected-by-user", "highlights")
+    assert found[copy] == Outcome(copy, "rejected-by-user", "highlights", keeper)
