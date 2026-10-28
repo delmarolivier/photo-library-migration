@@ -554,6 +554,11 @@ class Catalogue:
             rows = self._conn.execute("SELECT * FROM items WHERE source = ? ORDER BY id", (source,))
         return [_from_row(row) for row in rows]
 
+    def names(self) -> dict[int, str]:
+        """Every item's ``source:source_key``, by id, without loading the items."""
+        rows = self._conn.execute("SELECT id, source, source_key FROM items")
+        return {int(row["id"]): f"{row['source']}:{row['source_key']}" for row in rows}
+
     def set_date_candidate(self, item_id: int, source: DateSource, value: datetime) -> None:
         """Record one date candidate per source. Naive values mean local time, offset unknown."""
         self._conn.execute(

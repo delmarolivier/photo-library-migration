@@ -204,8 +204,45 @@ def edit_pair_cards(catalogue: Catalogue) -> list[Card]:
     return cards
 
 
+def dropped(catalogue: Catalogue) -> set[int]:
+    """Items another queue drops, by its answer or, until there is one, its proposal: clutter,
+    copies, shots left out of the best-shot or highlights picks, and the motion clips and
+    Google edits of any of those."""
+    names = catalogue.names()
+    found = {
+        item_id
+        for item_id in catalogue.clutter()
+        if catalogue.decision("item", item_id, "clutter") != {"reject": False}
+    }
+    for group in catalogue.groups("duplicate"):
+        answer = catalogue.decision("group", group.id, "duplicate")
+        keeper = (answer or {}).get("keeper", group.details["keeper"])
+        if answer is None or not answer.get("reject"):
+            found |= {
+                i
+                for i, role, _ in catalogue.group_members(group.id)
+                if role != "motion" and names[i] != keeper
+            }
+    for kind in ("best-shot", "highlights"):
+        for group in catalogue.groups(kind):
+            listed = catalogue.group_members(group.id)
+            if not any(role == "to-delete" for _, role, _ in listed):
+                continue
+            answer = catalogue.decision("group", group.id, kind)
+            keep = (answer or {}).get("keep", group.details["keep"])
+            found |= {i for i, role, _ in listed if role != "motion" and names[i] not in keep}
+    for kind, leader in (("live-pair", "still"), ("edit-pair", "original")):
+        for group in catalogue.groups(kind):  # type: ignore[arg-type]
+            listed = catalogue.group_members(group.id)
+            if any(i in found for i, role, _ in listed if role == leader):
+                found |= {i for i, _, _ in listed}
+    return found
+
+
 def date_cards(catalogue: Catalogue) -> list[Card]:
+    """Date batches, without the items other queues drop; a batch with none left is not asked."""
     cards = []
+    gone = dropped(catalogue)
     for group in catalogue.groups("date-batch"):
         details = group.details
         current, suggested = details["current"], details["suggestions"]
@@ -217,7 +254,10 @@ def date_cards(catalogue: Catalogue) -> list[Card]:
                 f"suggested {suggested.get(_name(item)) or '-'}",
             )
             for item, role in _members(catalogue, group.id)
+            if item.id not in gone
         )
+        if not members:
+            continue
         camera = details.get("camera") or "unknown camera"
         cards.append(
             Card(
@@ -359,7 +399,8 @@ QUEUES: dict[str, Queue] = {
         Queue("edit-pairs", "Edited versions", "edit-pair", "group", edit_pair_cards,
               "Original and Google edit side by side."),
         Queue("dates", "Dates", "date", "group", date_cards,
-              "One answer per batch: the suggestions, a date, a year, a shift, or remove it."),
+              "One answer per batch: the suggestions, a date, a year, a shift, or remove it. "
+              "What other queues drop is left out."),
         Queue("clutter", "Clutter", "clutter", "item", clutter_cards,
               "Screenshots, documents, memes, forwards and Google creations."),
         Queue("quality", "Quality flags", "quality", "item", quality_cards,

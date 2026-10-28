@@ -797,3 +797,10 @@ def test_icloud_assets_the_importer_made_are_known(cat: Catalogue) -> None:
     cat.upsert_item(CatalogueItem(source="icloud", source_key="UUID-OLD", kind="photo"))
 
     assert cat.own_imports() == {ours}
+
+
+def test_names_are_source_and_key_by_id(cat: Catalogue) -> None:
+    a = cat.upsert_item(CatalogueItem(source="google", source_key="T/a.jpg", kind="photo"))
+    b = cat.upsert_item(CatalogueItem(source="icloud", source_key="UUID", kind="photo"))
+
+    assert cat.names() == {a: "google:T/a.jpg", b: "icloud:UUID"}
