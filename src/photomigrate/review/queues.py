@@ -282,13 +282,14 @@ def quality_cards(catalogue: Catalogue) -> list[Card]:
 
 
 def tile(latitude: float, longitude: float, zoom: int = 15) -> dict[str, Any]:
-    """The OpenStreetMap tile holding a place, and where in it the place is (percent)."""
+    """The OpenStreetMap tile holding a place (served by the gallery, ``review.tiles``), and
+    where in it the place is (percent)."""
     scale = 2**zoom
     x = (longitude + 180) / 360 * scale
     rad = math.radians(latitude)
     y = (1 - math.asinh(math.tan(rad)) / math.pi) / 2 * scale
     return {
-        "url": f"https://tile.openstreetmap.org/{zoom}/{int(x)}/{int(y)}.png",
+        "url": f"/tile/{zoom}/{int(x)}/{int(y)}.png",
         "left": round((x - int(x)) * 100, 2),
         "top": round((y - int(y)) * 100, 2),
         "link": f"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}#map=17/{latitude}/{longitude}",

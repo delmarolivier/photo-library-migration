@@ -29,6 +29,7 @@ from photomigrate.analyse.date_fixes import AnswerError, fixes
 from photomigrate.catalogue import Catalogue
 from photomigrate.review.queues import KINDS, QUEUES, Card, Value, as_json, progress
 from photomigrate.review.thumbs import Thumbnails
+from photomigrate.review.tiles import Fetch, Tiles, fetch
 
 __all__ = ["QUEUES", "create_app", "serve", "server_config"]
 
@@ -50,12 +51,14 @@ def create_app(
     thumbs: Path,
     takeout: Path | None = None,
     library: Path | None = None,
+    fetch_tile: Fetch = fetch,
 ) -> FastAPI:
     app = FastAPI(title="photomigrate review", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.globals["as_json"] = as_json
     thumbnails = Thumbnails(thumbs, takeout=takeout, library=library)
     thumbnail_lock = threading.Lock()  # zip readers are not thread-safe
+    tiles = Tiles(thumbs / "tiles", fetch_tile)
 
     @app.middleware("http")
     async def writes_come_from_our_pages(
@@ -216,6 +219,16 @@ def create_app(
         with thumbnail_lock:
             data = thumbnails.get(item)
         return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+    @app.get("/tile/{zoom}/{x}/{y}.png")
+    def tile(zoom: int, x: int, y: int) -> Response:
+        try:
+            data = tiles.get(zoom, x, y)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except OSError as exc:
+            raise HTTPException(502, f"the map tile could not be fetched: {exc}") from None
+        return Response(data, media_type="image/png", headers={"Cache-Control": "max-age=604800"})
 
     return app
 

@@ -13,9 +13,10 @@
   </div>
   {% if card.extra.map %}
   <a class="map" href="{{ card.extra.map.link }}" target="_blank" rel="noopener noreferrer">
-    <img src="{{ card.extra.map.url }}" alt="map" referrerpolicy="no-referrer">
+    <img src="{{ card.extra.map.url }}" loading="lazy" alt="map">
     <span class="pin" style="left: {{ card.extra.map.left }}%; top: {{ card.extra.map.top }}%"></span>
   </a>
+  <small class="credit">© OpenStreetMap contributors</small>
   {% endif %}
   {% set vals = {"subject": card.subject, "subject_id": card.subject_id, "kind": card.kind} %}
   {% if card.form == "date" %}

@@ -160,8 +160,35 @@ def test_pages_beyond_the_last_are_empty(client: TestClient) -> None:
 def test_the_locations_queue_shows_a_small_map(client: TestClient) -> None:
     page = client.get("/queue/locations")
 
-    assert "tile.openstreetmap.org/15/" in page.text
+    assert 'src="/tile/15/' in page.text
+    assert "tile.openstreetmap.org" not in page.text, "the browser never asks OSM for tiles"
     assert "openstreetmap.org/?mlat=" in page.text
+    assert "OpenStreetMap contributors" in page.text
+
+
+def test_map_tiles_come_through_the_gallery(catalogue_path: Path, tmp_path: Path) -> None:
+    asked: list[str] = []
+
+    def fetch(url: str) -> bytes:
+        asked.append(url)
+        if "/0/0/0" in url:
+            raise OSError("offline")
+        return b"png"
+
+    client = TestClient(
+        create_app(catalogue_path, thumbs=tmp_path / "t", fetch_tile=fetch), base_url=HOST
+    )
+
+    reply = client.get("/tile/15/17896/19829.png")
+    assert reply.status_code == 200
+    assert reply.headers["content-type"] == "image/png"
+    assert reply.content == b"png"
+    assert client.get("/tile/20/0/0.png").status_code == 404
+    assert client.get("/tile/0/0/0.png").status_code == 502
+    assert asked == [
+        "https://tile.openstreetmap.org/15/17896/19829.png",
+        "https://tile.openstreetmap.org/0/0/0.png",
+    ]
 
 
 # --- decisions -----------------------------------------------------------------------------
