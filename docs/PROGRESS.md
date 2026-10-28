@@ -3,9 +3,11 @@
 ## Current state
 - Milestone: 4. The real migration (CLA-92), running on the Air itself.
 - Done (2026-10-27/28): the 46 Takeout parts (three archives, 444 GB) are on the drive
-  `/Volumes/Photos` (plain APFS, 1.8 TB), each zip-tested with its `.sha256`. Ingest dry run
-  done; `ingest --apply` running on the full Takeout (Delmar asked to go ahead without a GO
-  for the Google-only steps). Then `analyse` on the Google items alone.
+  `/Volumes/Photos` (plain APFS, 1.8 TB), each zip-tested with its `.sha256`. `ingest --apply`
+  done on the full Takeout (150,714 items, 0 failures), then `analyse --apply` on the Google
+  items alone (Delmar asked to go ahead without a GO for the Google-only steps).
+- Before the iCloud run: shut down the UTM VM (~3.7 GB) and OrbStack, and turn Spotlight off
+  for `/Volumes/Photos` (Delmar's choice, 2026-10-28).
 - Next: Delmar moves the Photos library to `/Volumes/Photos`, turns on Download Originals and
   gives the Claude app Full Disk Access (planned 2026-10-28). Then `index`, re-`analyse`, and
   the review in the gallery. Nothing touches the library before that, and `import --apply`
@@ -37,8 +39,26 @@
 - Ingest dry run: 153,302 items (136,064 photos, 17,238 videos, 477 GB), 58 albums; matches:
   99,003 exact, 44,085 edited-original, 10,214 without a sidecar; 648 orphan sidecars;
   13 unknown files.
-- Branch `fix/takeout-multiple-archives` (2 commits, 1,182 tests, 100%): pushing was blocked
-  by this session's permission check; Delmar to approve the push and PR.
+- Fix: ingest was killed (exit 137) after 5,991 items at an 11 GB footprint. On macOS 27 a
+  growing `BytesIO` never returns its memory, and the Vision calls had no autorelease pool.
+  `vision_data` sizes the buffer up front; face and text reads drain a pool. Ingest then held
+  ~3.2 GB for the whole run (a macOS test pins it).
+- Ingest apply: 11 h on one core (CPU-bound; the USB drive ran at 7-14 MB/s of ~400).
+  150,714 items: 136,052 photos (103.5 GB), 14,662 videos (364.9 GB); 2,588 byte-identical
+  copies folded into their items; 7,320 Live Photos paired; 132 unpaired motion clips,
+  648 orphan sidecars and 13 unknown files flagged; 0 failed.
+- Fix: the date audit's suggestions scanned the whole camera sequence for each flagged shot
+  (quadratic; 20,000 shots took over 2 minutes). Bisection now; the test runs in under a second.
+- Analyse apply (Google only, proposals for the review; 37 minutes):
+  - duplicates: 23,479 groups; 27,135 extra photos (24.7 GB) and 1,886 extra videos (94.3 GB);
+  - best shot (after duplicates): 7,848 groups, keeping 15,696, setting aside 9,026 (7.8 GB);
+  - edits: 44,084 edited/original pairs, 112 edits without an original;
+  - quality flags on 8,255 items (3,766 blurry, 2,725 low-resolution, 1,958 badly exposed,
+    115 accidental, 222 bad video clips);
+  - clutter: 5,009 (2,526 Google creations, 1,248 documents, 932 screenshots, 303 memes);
+  - 3,730 proposed locations; 171 date batches with doubtful or missing dates;
+  - in all 43,040 items (132.5 GB) proposed to set aside, of 150,714 (468 GB).
+- Branch `fix/takeout-multiple-archives` pushed (5 commits, 1,184 tests, 100%).
 
 ### 2026-10-21: session 2 (continued): the real Photos.app test
 - Both opt-in Photos.app tests pass on the Air with a throwaway library in /tmp: the fixture
