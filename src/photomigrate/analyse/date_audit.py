@@ -35,6 +35,7 @@ date and suggestion, and the batch offset. The review answers each batch (``date
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import itertools
 import json
@@ -183,18 +184,19 @@ def suggestions(
     found: dict[int, datetime | None] = {}
     for run in _sequences(items):
         good = [i for i in run if i.id not in flagged and _datable(i)]
+        orders = [_order(i) for i in good]
         for current in run:
             if current.id not in flagged:
                 continue
+            # The run is in shot order, so its good shots either side are found by bisection.
             at = _order(current)
-            before = [i for i in good if _order(i) < at]
-            after = [i for i in good if _order(i) > at]
+            low, high = bisect.bisect_left(orders, at), bisect.bisect_right(orders, at)
+            before = good[low - 1] if low else None
+            after = good[high] if high < len(good) else None
             if before and after:
-                found[current.id] = _between(before[-1], after[0], current)
-            elif before or after:
-                found[current.id] = _wall(
-                    (before[-1] if before else after[0]).taken or datetime.min
-                )
+                found[current.id] = _between(before, after, current)
+            elif nearest := before or after:
+                found[current.id] = _wall(nearest.taken or datetime.min)
     result: dict[int, datetime | None] = {}
     for current in items:
         if current.id not in flagged:

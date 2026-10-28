@@ -1,5 +1,6 @@
 """Date audit: why an item's date is doubtful, its batch, and a suggested date."""
 
+import time
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
@@ -16,7 +17,7 @@ from photomigrate.analyse.date_audit import (
 
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
 DAY = timedelta(days=1)
-_ids = iter(range(1, 100_000))
+_ids = iter(range(1, 1_000_000))
 
 
 def item(
@@ -319,3 +320,17 @@ def test_suggestions_are_whole_seconds() -> None:
     found = suggestions(shots, audit(shots, NOW))
 
     assert [found[s.id] for s in gap] == [datetime(2019, 7, 1, 12, 0, 0)] * 2
+
+
+def test_suggestions_for_a_long_sequence_take_seconds_not_hours() -> None:
+    # A real library has tens of thousands of IMG_ shots in one camera's sequence.
+    shots = [
+        item(f"IMG_{n:05d}.JPG", taken=None if n % 2 else datetime(2019, 7, 1, 12, 0))
+        for n in range(1, 20_001)
+    ]
+    started = time.perf_counter()
+
+    found = suggestions(shots, audit(shots, NOW))
+
+    assert time.perf_counter() - started < 5
+    assert found[shots[2].id] == datetime(2019, 7, 1, 12, 0)
