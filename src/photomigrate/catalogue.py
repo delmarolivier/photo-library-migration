@@ -438,7 +438,10 @@ class Catalogue:
     @classmethod
     def open(cls, path: Path, *, clock: Clock = utc_now) -> Catalogue:
         path.parent.mkdir(parents=True, exist_ok=True)
-        return cls(sqlite3.connect(path, isolation_level=None), clock=clock)
+        conn = sqlite3.connect(path, isolation_level=None)
+        # Write-ahead logging, so reading the catalogue while a stage runs never locks it out.
+        conn.execute("PRAGMA journal_mode = WAL")
+        return cls(conn, clock=clock)
 
     @classmethod
     def snapshot(cls, path: Path, *, clock: Clock = utc_now) -> Catalogue:

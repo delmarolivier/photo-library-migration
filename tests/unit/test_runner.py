@@ -63,10 +63,11 @@ class CopyStage:
 
 
 def tree(root: Path) -> dict[str, tuple[str, int]]:
+    """Every file's hash and mtime, leaving out SQLite's own write-ahead log and index."""
     return {
         p.relative_to(root).as_posix(): (sha(p), p.stat().st_mtime_ns)
         for p in sorted(root.rglob("*"))
-        if p.is_file()
+        if p.is_file() and not p.name.endswith(("-wal", "-shm"))
     }
 
 

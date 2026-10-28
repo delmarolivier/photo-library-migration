@@ -87,6 +87,19 @@ def test_open_creates_the_file_and_migrates_an_empty_database(path: Path) -> Non
     }
 
 
+def test_a_long_read_elsewhere_does_not_stop_a_stage_writing(cat: Catalogue, path: Path) -> None:
+    # Looking at the catalogue (sqlite3 -readonly) while a stage runs must not fail the stage.
+    reader = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+    reader.execute("BEGIN")
+    reader.execute("SELECT count(*) FROM items").fetchone()
+    try:
+        cat.upsert_album("google", "Takeout/Google Photos/Trip", "Trip")
+    finally:
+        reader.close()
+
+    assert [a.title for a in cat.albums()] == ["Trip"]
+
+
 def test_reopening_an_up_to_date_catalogue_changes_nothing(path: Path) -> None:
     with Catalogue.open(path, clock=Clock()) as catalogue:
         catalogue.upsert_item(PHOTO)
