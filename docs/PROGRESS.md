@@ -58,7 +58,36 @@
   - clutter: 5,009 (2,526 Google creations, 1,248 documents, 932 screenshots, 303 memes);
   - 3,730 proposed locations; 171 date batches with doubtful or missing dates;
   - in all 43,040 items (132.5 GB) proposed to set aside, of 150,714 (468 GB).
-- Branch `fix/takeout-multiple-archives` pushed (5 commits, 1,184 tests, 100%).
+- Branch `fix/takeout-multiple-archives` pushed (8 commits, 1,222 tests, 100%).
+- Delmar moved the Photos library to the drive (`/Volumes/Photos/Pictures/Photos
+  Library.photoslibrary`, the whole Pictures folder came along; the paths are arguments, so
+  it stays there), made it the System Photo Library, downloaded originals (38 GB) and gave
+  the Claude app Full Disk Access. UTM VM shut down; Spotlight off for the drive.
+- iCloud is small: 3,754 items (3,291 photos, 463 videos, 35 GB), nearly all from 2021 on.
+  Google Photos was Delmar's main store before that, so Google holds the history.
+- Fix: a read-only `sqlite3` query on the catalogue while `index --apply` ran made a write
+  wait past SQLite's timeout ("database is locked"). The catalogue now uses write-ahead
+  logging. Note: with WAL, `sqlite3 -readonly` cannot open the catalogue when no stage has
+  it open; use plain `sqlite3` for queries.
+- Index apply: 3,754 iCloud items, resumed after the lock.
+- Delmar's decision (2026-10-28): over 100k is still too many; keep the best 20% of each
+  year's photos. Always keep favourites (they count towards the 20%);
+  videos are left out of the cut. iCloud photos are cut like Google's (the ones left out go
+  to "To Delete"). Album photos were protected at first, but one album ("Milan en Jacques")
+  holds 29,068 photos, which kept 33,663 safe; Delmar then chose no album protection.
+- New stage `highlights` (CLA follow-up): per year, events split at 6-hour gaps, the 20%
+  quota shared across events by size, ranked by the best-shot scores blended with an
+  open_clip "good photo" appeal (0.4), passing over near repeats (0.9). One `highlights`
+  group per event in a new review queue (the best-shot picks form; it may keep none).
+  Outcomes: edits follow their original; copies of a keeper the review turns down go with
+  it (that gap existed for best shot too). Catalogue v17. `[highlights]` in the config.
+- Fix: a Google edit only followed its original's clutter or highlights answer, so the edits
+  of best-shot losers and duplicates were still imported (~16,000). An edit now goes where its
+  original goes, unless the review kept only the edit.
+- Analyse on both sources, every proposal accepted (simulated on an in-memory copy): 15,851
+  photos and 6,153 videos kept (from 140,000+ photos and 15,000 videos). Busiest years: 2014
+  2,049 photos, 2011 1,872, 2012 1,692, 2013 1,546, 2015 1,437. Photos with a Google edit
+  keep both versions (edit policy "pair"). Videos are not cut yet: 78% of the bytes.
 
 ### 2026-10-21: session 2 (continued): the real Photos.app test
 - Both opt-in Photos.app tests pass on the Air with a throwaway library in /tmp: the fixture

@@ -7,7 +7,8 @@ Every Google item gets exactly one outcome:
   iCloud or imported;
 * ``rejected-by-user``: the review said no (a best-shot loser, a photo left out of its year's
   highlights, clutter, quality, unmatched, or the version of an edit pair the review did not
-  keep); an edit shares its original's clutter and highlights answers;
+  keep). An edit goes where its original goes: turned down, a duplicate or still waiting
+  (``partner`` is the original), unless the review kept only the edit;
 * ``follows``: a Live Photo's motion clip, imported with its still (``partner``);
 * ``pending``: a question that decides it is still unanswered (a duplicate, best-shot or
   highlights group, or a Google creation, which is never imported without a yes).
@@ -138,6 +139,16 @@ def outcomes(catalogue: Catalogue) -> dict[int, Outcome]:
             result[item_id] = Outcome(item_id, "pending", "google creation")
         else:
             result[item_id] = Outcome(item_id, "import", "")
+    for edited, original in found.original_of.items():  # an edit goes where its original goes
+        mine, theirs = result.get(edited), result.get(original)
+        if mine is None or theirs is None or mine.status not in ("import", "pending"):
+            continue
+        if theirs.status == "rejected-by-user" and theirs.reason != "original version":
+            result[edited] = Outcome(edited, "rejected-by-user", theirs.reason, original)
+        elif theirs.status == "duplicate-of-existing":
+            result[edited] = Outcome(edited, "rejected-by-user", "duplicates", original)
+        elif theirs.status == "pending" and mine.status == "import":
+            result[edited] = Outcome(edited, "pending", theirs.reason)
     return result
 
 

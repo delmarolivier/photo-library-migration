@@ -245,3 +245,48 @@ def test_a_copy_of_a_keeper_the_review_rejects_is_rejected_with_it(cat: Catalogu
 
     assert found[keeper] == Outcome(keeper, "rejected-by-user", "highlights")
     assert found[copy] == Outcome(copy, "rejected-by-user", "highlights", keeper)
+
+
+def edit_of(cat: Catalogue, original_name: str) -> tuple[int, int]:
+    original = google(cat, original_name)
+    edited_name = original_name.replace(".JPG", "-edited.JPG")
+    edit = google(cat, edited_name, flags=frozenset({"edited"}))
+    keys = [f"{ROOT}/{original_name}", f"{ROOT}/{edited_name}"]
+    group(cat, "edit-pair", keys[1], [(original, "original"), (edit, "edited")],
+          policy="pair", keep=keys)  # fmt: skip
+    return original, edit
+
+
+def test_an_edit_goes_with_an_original_the_best_shot_review_turns_down(cat: Catalogue) -> None:
+    original, edit = edit_of(cat, "IMG_1400.JPG")
+    other = google(cat, "IMG_1401.JPG")
+    shot = group(cat, "best-shot", "best-14", [(other, "keep"), (original, "to-delete")],
+                 keep=[name(cat, other)])  # fmt: skip
+
+    assert outcomes(cat)[edit].status == "pending"
+    cat.set_decision("group", shot, "best-shot", {"keep": [name(cat, other)]})
+
+    assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "best-shot", original)
+
+
+def test_an_edit_of_a_confirmed_duplicate_is_not_imported(cat: Catalogue) -> None:
+    keeper = icloud(cat, "U30")
+    original, edit = edit_of(cat, "IMG_1500.JPG")
+    dup = group(cat, "duplicate", "dup-15", [(keeper, "keeper"), (original, "duplicate")],
+                keeper=name(cat, keeper), method="exact")  # fmt: skip
+    cat.set_decision("group", dup, "duplicate", {"keeper": name(cat, keeper)})
+
+    assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "duplicates", original)
+
+
+def test_an_edit_of_a_copy_of_a_turned_down_keeper_goes_too(cat: Catalogue) -> None:
+    keeper, other = google(cat, "IMG_1600.JPG"), google(cat, "IMG_1601.JPG")
+    original, edit = edit_of(cat, "IMG_1602.JPG")
+    dup = group(cat, "duplicate", "dup-16", [(keeper, "keeper"), (original, "duplicate")],
+                keeper=name(cat, keeper), method="exact")  # fmt: skip
+    event = group(cat, "highlights", "hl-16", [(other, "keep"), (keeper, "to-delete")],
+                  keep=[name(cat, other)], year=2016)  # fmt: skip
+    cat.set_decision("group", dup, "duplicate", {"keeper": name(cat, keeper)})
+    cat.set_decision("group", event, "highlights", {"keep": [name(cat, other)]})
+
+    assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "highlights", original)
