@@ -75,7 +75,10 @@ class VisionText:
     def read(self, image: Image.Image) -> TextSummary | None:
         import Vision
 
-        handler = Vision.VNImageRequestHandler.alloc().initWithData_options_(vision_data(image), {})
+        # macOS 27 raises "key does not exist" for an empty options dict: pass none.
+        handler = Vision.VNImageRequestHandler.alloc().initWithData_options_(
+            vision_data(image), None
+        )
         request = Vision.VNDetectTextRectanglesRequest.alloc().init()
         done, _ = handler.performRequests_error_([request], None)
         if not done:  # one odd picture must not stop ingest: it is left unmeasured
