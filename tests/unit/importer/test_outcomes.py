@@ -125,6 +125,33 @@ def test_items_the_review_rejects_are_not_imported(cat: Catalogue, kind: str) ->
     assert outcomes(cat)[item].status == "import"
 
 
+def test_a_date_batch_the_review_removes_is_not_imported(cat: Catalogue) -> None:
+    still, motion = google(cat, "IMG_0500.HEIC"), google(cat, "IMG_0500.MP4", kind="video")
+    other, edit = edit_of(cat, "IMG_0501.JPG")
+    group(cat, "live-pair", "lp", [(still, "still"), (motion, "motion")])
+    batch = group(
+        cat, "date-batch", "db", [(still, "member"), (motion, "member"), (other, "member")]
+    )
+
+    cat.set_decision("group", batch, "date", {"answer": "remove"})
+
+    found = outcomes(cat)
+    assert found[still] == Outcome(still, "rejected-by-user", "dates")
+    assert found[other] == Outcome(other, "rejected-by-user", "dates")
+    assert found[edit] == Outcome(edit, "rejected-by-user", "dates", other)
+    cat.set_decision("group", batch, "date", {"answer": "keep"})
+    assert outcomes(cat)[still].status == "import"
+
+
+def test_icloud_items_removed_in_dates_go_to_to_delete(cat: Catalogue) -> None:
+    item = icloud(cat, "UUID-DATES")
+    batch = group(cat, "date-batch", "db", [(item, "member")])
+
+    cat.set_decision("group", batch, "date", {"answer": "remove"})
+
+    assert to_delete(cat) == {item: "dates"}
+
+
 def test_google_creations_wait_for_the_review(cat: Catalogue) -> None:
     creation = google(cat, "IMG_0500-MOTION.gif", flags=frozenset({"google-creation"}))
     cat.set_clutter(creation, "google-creation", 1.0, {"creation-flag": 1.0})

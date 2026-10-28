@@ -358,7 +358,7 @@ QUEUES: dict[str, Queue] = {
         Queue("edit-pairs", "Edited versions", "edit-pair", "group", edit_pair_cards,
               "Original and Google edit side by side."),
         Queue("dates", "Dates", "date", "group", date_cards,
-              "One answer per batch: the suggestions, a date, a year, or a shift."),
+              "One answer per batch: the suggestions, a date, a year, a shift, or remove it."),
         Queue("clutter", "Clutter", "clutter", "item", clutter_cards,
               "Screenshots, documents, memes, forwards and Google creations."),
         Queue("quality", "Quality flags", "quality", "item", quality_cards,

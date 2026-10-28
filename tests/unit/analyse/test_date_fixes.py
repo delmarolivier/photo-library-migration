@@ -91,6 +91,10 @@ def test_keeping_confirms_the_dates_items_have() -> None:
     assert found == [Fix(A.id, A.taken, approx=False), Fix(B.id, B.taken, approx=False)]  # type: ignore[arg-type]
 
 
+def test_removing_gives_no_dates() -> None:
+    assert fixes([A, B, UNDATED], {"answer": "remove"}, SUGGESTED) == []
+
+
 @pytest.mark.parametrize(
     ("answer", "message"),
     [

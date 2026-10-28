@@ -236,6 +236,7 @@ def test_a_group_decision_needs_a_group_that_exists(client: TestClient) -> None:
         ({"answer": "shift", "offset_hours": "-1.5"}, {"answer": "shift", "offset_seconds": -5400}),
         ({"answer": "accept"}, {"answer": "accept"}),
         ({"answer": "keep"}, {"answer": "keep"}),
+        ({"answer": "remove"}, {"answer": "remove"}),
     ],
 )
 def test_date_answers_from_the_batch_form(

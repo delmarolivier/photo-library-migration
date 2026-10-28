@@ -8,7 +8,9 @@ The review gallery stores the answer as the batch's ``date`` decision. The answe
 * ``{"answer": "year", "year": 2004}``: every item takes 1 July of that year at noon, marked
   approximate (keyword ``date-approx``). Noon keeps the day the same in any time zone;
 * ``{"answer": "shift", "offset_seconds": -5400}``: every dated item moves by exactly that
-  much (a camera clock that was wrong), keeping its UTC offset if it has one.
+  much (a camera clock that was wrong), keeping its UTC offset if it has one;
+* ``{"answer": "remove"}``: the batch is junk; no dates change, and no item in it is
+  imported (``importer.outcomes``; iCloud items go to "To Delete").
 
 Entered dates are local wall-clock time, like EXIF.
 
@@ -36,7 +38,7 @@ from photomigrate.catalogue import Catalogue, CatalogueItem, Source
 from photomigrate.ingest.exif import MetadataWrite
 from photomigrate.runner import Action, JSONValue
 
-ANSWERS = ("accept", "keep", "date", "year", "shift")
+ANSWERS = ("accept", "keep", "date", "year", "shift", "remove")
 APPROX_KEYWORD = "date-approx"
 
 
@@ -95,6 +97,8 @@ def fixes(
     if kind == "accept":
         found = [(m.id, suggested.get(m.id)) for m in members]
         return [Fix(item_id, when, approx=False) for item_id, when in found if when]
+    if kind == "remove":
+        return []
     raise AnswerError(f"an answer needs one of {', '.join(ANSWERS)} as 'answer', not {kind!r}")
 
 

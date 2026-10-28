@@ -30,6 +30,7 @@
     <label>Shift by hours <input type="number" step="any" name="offset_hours"
       value="{{ card.extra.offset_hours if card.extra.offset_hours is not none else '' }}"></label>
     <button name="answer" value="shift">Shift the batch</button>
+    <button name="answer" value="remove" data-key="r">Remove these</button>
   </form>
   {% elif card.form == "best-shot" %}
   {% set kept = (card.decision or card.proposal.value)["keep"] %}

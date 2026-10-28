@@ -6,9 +6,10 @@ Every Google item gets exactly one outcome:
 * ``duplicate-of-existing``: the review confirmed it is a copy of ``partner``, which is in
   iCloud or imported;
 * ``rejected-by-user``: the review said no (a best-shot loser, a photo left out of its year's
-  highlights, clutter, quality, unmatched, or the version of an edit pair the review did not
-  keep). An edit goes where its original goes: turned down, a duplicate or still waiting
-  (``partner`` is the original), unless the review kept only the edit;
+  highlights, a date batch it removed, clutter, quality, unmatched, or the version of an edit
+  pair the review did not keep). An edit goes where its original goes: turned down, a
+  duplicate or still waiting (``partner`` is the original), unless the review kept only the
+  edit;
 * ``follows``: a Live Photo's motion clip, imported with its still (``partner``);
 * ``pending``: a question that decides it is still unanswered (a duplicate, best-shot or
   highlights group, or a Google creation, which is never imported without a yes).
@@ -17,9 +18,9 @@ A confirmed duplicate wins over a rejection, a rejection over a pending question
 the copies of a keeper the review turned down are turned down with it (``partner``).
 
 Existing iCloud items the review rejected (a confirmed duplicate of another item, a
-best-shot loser, one left out of its year's highlights, clutter, quality or unmatched) go to
-the "To Delete" album (``to_delete``): Delmar deletes them by hand. Nothing here deletes
-anything.
+best-shot loser, one left out of its year's highlights, a removed date batch, clutter, quality
+or unmatched) go to the "To Delete" album (``to_delete``): Delmar deletes them by hand.
+Nothing here deletes anything.
 """
 
 from __future__ import annotations
@@ -87,6 +88,10 @@ def _verdicts(catalogue: Catalogue) -> _Verdicts:
                     found.pending[i].append(kind)
                 elif names[i] not in answer.get("keep", []):
                     found.rejected[i].append(kind)
+    for group in catalogue.groups("date-batch"):
+        if catalogue.decision("group", group.id, "date") == {"answer": "remove"}:
+            for i, _, _ in catalogue.group_members(group.id):
+                found.rejected[i].append("dates")
     for group in catalogue.groups("edit-pair"):
         (original, _, _), (edited, _, _) = catalogue.group_members(group.id)
         found.original_of[edited] = original
