@@ -251,3 +251,77 @@ def test_reading_an_unknown_tree_entry_fails(tmp_path: Path) -> None:
 
     with open_takeout(tmp_path / "tree") as takeout, pytest.raises(KeyError):
         takeout.read("Takeout/Google Photos/Photos from 2019/nope.jpg")
+
+
+def write_archive_parts(dest: Path, parts: dict[str, bytes]) -> None:
+    """``parts`` maps a zip name to the bytes of Photos from 2019/IMG_1.JPG in it."""
+    dest.mkdir(exist_ok=True)
+    for name, payload in parts.items():
+        with zipfile.ZipFile(dest / name, "w") as z:
+            z.writestr("Takeout/Google Photos/Photos from 2019/IMG_1.JPG", payload)
+
+
+SAME_NAME = "Takeout/Google Photos/Photos from 2019/IMG_1.JPG"
+
+
+def test_the_same_path_in_two_archives_is_two_entries(tmp_path: Path) -> None:
+    # A big export comes as several archives (takeout-<stamp>-<archive>-<part>.zip). Google
+    # numbers clashing names within one archive but not across archives.
+    write_archive_parts(
+        tmp_path / "in",
+        {
+            "takeout-20261021T144622Z-1-001.zip": b"one",
+            "takeout-20261021T144622Z-2-001.zip": b"two",
+        },
+    )
+
+    with open_takeout(tmp_path / "in") as takeout:
+        first, second = sorted(takeout.entries, key=lambda e: e.archive or "")
+        assert (first.path, first.archive, first.key) == (SAME_NAME, "1", SAME_NAME)
+        assert (second.path, second.archive) == (SAME_NAME, "2")
+        assert second.key == "Takeout-2/Google Photos/Photos from 2019/IMG_1.JPG"
+        assert takeout.read(first.key) == b"one"
+        assert takeout.read(second.key) == b"two"
+
+
+def test_parts_of_one_archive_must_still_agree(tmp_path: Path) -> None:
+    write_archive_parts(
+        tmp_path / "in",
+        {
+            "takeout-20261021T144622Z-1-001.zip": b"one",
+            "takeout-20261021T144622Z-1-002.zip": b"two",
+        },
+    )
+
+    with pytest.raises(TakeoutError, match="different"):
+        open_takeout(tmp_path / "in")
+
+
+def test_entries_of_unnumbered_parts_and_trees_have_no_archive(tmp_path: Path) -> None:
+    small_takeout(tmp_path / "in")
+
+    with open_takeout(tmp_path / "in") as takeout:
+        assert {(e.archive, e.key == e.path) for e in takeout.entries} == {(None, True)}
+
+
+def test_same_named_entries_of_two_archives_are_copied_and_extracted_apart(
+    tmp_path: Path,
+) -> None:
+    write_archive_parts(
+        tmp_path / "in",
+        {
+            "takeout-20261021T144622Z-1-001.zip": b"one",
+            "takeout-20261021T144622Z-2-001.zip": b"two",
+        },
+    )
+
+    (tmp_path / "scratch").mkdir()
+    with open_takeout(tmp_path / "in") as takeout:
+        for entry in takeout.entries:
+            with takeout.local_copy(entry, tmp_path / "scratch") as (copy, _):
+                assert copy.read_bytes() == {"1": b"one", "2": b"two"}[entry.archive or ""]
+            assert entry.part is not None
+            takeout.extract(entry.part, tmp_path / "work")
+            original = takeout.original(entry, tmp_path / "work")
+            assert original == tmp_path / "work" / entry.key
+            assert original.read_bytes() == {"1": b"one", "2": b"two"}[entry.archive or ""]

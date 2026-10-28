@@ -101,21 +101,31 @@ class IngestStage:
     # -- plan -------------------------------------------------------------------------------
 
     def plan(self, catalogue: Catalogue) -> Iterator[Action]:
+        # Sidecars are matched within one archive's folder (keyed like the entries), but an
+        # album is the whole folder: its metadata.json is in one archive, its photos in any.
         folders: dict[str, list[Entry]] = defaultdict(list)
+        album_folders: dict[str, list[Entry]] = defaultdict(list)
         for entry in self.takeout.entries:
-            folders[str(PurePosixPath(entry.path).parent)].append(entry)
-        albums = {folder: self._album(entries) for folder, entries in folders.items()}
+            folders[str(PurePosixPath(entry.key).parent)].append(entry)
+            album_folders[str(PurePosixPath(entry.path).parent)].append(entry)
+        albums = {folder: self._album(entries) for folder, entries in album_folders.items()}
+        album_of = {key: albums[str(PurePosixPath(entries[0].path).parent)]
+                    for key, entries in folders.items()}  # fmt: skip
         # Plain folders ("Photos from YYYY") first, so an item's main record is its year-folder
         # file when there is one, and album folders' identical files become its copies.
-        for folder in sorted(folders, key=lambda f: (albums[f] is not None, f)):
-            yield from self._plan_folder(folder, folders[folder], albums[folder])
+        announced: set[str] = set()
+        for key in sorted(folders, key=lambda f: (album_of[f] is not None, f)):
+            folder = str(PurePosixPath(folders[key][0].path).parent)
+            first = folder not in announced
+            announced.add(folder)
+            yield from self._plan_folder(folder, folders[key], album_of[key], announce=first)
 
     def _album(self, entries: list[Entry]) -> dict[str, JSONValue] | None:
         """The folder's album, read from its metadata.json, or None for a plain folder."""
         for entry in entries:
             if is_album_metadata(PurePosixPath(entry.path).name):
                 try:
-                    album = parse_album_metadata(self.takeout.read(entry.path))
+                    album = parse_album_metadata(self.takeout.read(entry.key))
                 except SidecarError:
                     album = AlbumData(title=PurePosixPath(entry.path).parent.name)
                 return {
@@ -126,13 +136,18 @@ class IngestStage:
         return None
 
     def _plan_folder(
-        self, folder: str, entries: list[Entry], album: dict[str, JSONValue] | None
+        self,
+        folder: str,
+        entries: list[Entry],
+        album: dict[str, JSONValue] | None,
+        *,
+        announce: bool = True,
     ) -> Iterator[Action]:
         by_name = {PurePosixPath(e.path).name: e for e in entries}
         media = [name for name in by_name if media_kind(name)]
         jsons = [name for name in by_name if name.lower().endswith(".json")]
         result = match_folder(media, jsons)
-        if album is not None:
+        if album is not None and announce:
             yield Action("album", folder, album)
         for name in sorted(media):
             action = self._ingest_action(folder, by_name[name], result.matches[name], by_name)
@@ -140,10 +155,10 @@ class IngestStage:
                 action = Action(action.kind, action.target, {**action.details, "album": album})
             yield action
         for name in result.orphans:
-            yield Action("flag-orphan-sidecar", by_name[name].path, self._where(by_name[name]))
+            yield Action("flag-orphan-sidecar", by_name[name].key, self._where(by_name[name]))
         for name, entry in sorted(by_name.items()):
             if not media_kind(name) and not name.lower().endswith(".json"):
-                yield Action("flag-unknown-file", entry.path, self._where(entry))
+                yield Action("flag-unknown-file", entry.key, self._where(entry))
 
     def _where(self, entry: Entry) -> dict[str, JSONValue]:
         return {"locator": self.takeout.locator(entry), "size": entry.size}
@@ -157,8 +172,8 @@ class IngestStage:
         if match.sidecar is not None:
             sidecar_entry = by_name[match.sidecar]
             try:
-                sidecar_data = parse_sidecar(self.takeout.read(sidecar_entry.path)).to_dict()
-                sidecar_path = sidecar_entry.path
+                sidecar_data = parse_sidecar(self.takeout.read(sidecar_entry.key)).to_dict()
+                sidecar_path = sidecar_entry.key
             except SidecarError:
                 flags.append("bad-sidecar")
         details: dict[str, JSONValue] = {
@@ -171,7 +186,7 @@ class IngestStage:
             "flags": cast(JSONValue, sorted(flags)),
             "modified": entry.modified.isoformat(),
         }
-        return Action("ingest", entry.path, details)
+        return Action("ingest", entry.key, details)
 
     # -- apply ------------------------------------------------------------------------------
 
@@ -218,13 +233,13 @@ class IngestStage:
         )
         url = sidecar.url if sidecar else None
         same_bytes = [
-            i for i in catalogue.find_by_sha256("google", sha256) if i.source_key != entry.path
+            i for i in catalogue.find_by_sha256("google", sha256) if i.source_key != entry.key
         ]
         original = next((i for i in same_bytes if url is None or i.google_url in (None, url)), None)
         if original is not None:
             # The same Google item again (an album folder's copy): one item, one more album.
             original_id = cast(int, original.id)  # rows read back from the catalogue have ids
-            catalogue.add_copy("google", entry.path, original_id)
+            catalogue.add_copy("google", entry.key, original_id)
             if album_id is not None:
                 catalogue.add_album_member(album_id, original_id)
             return
@@ -243,7 +258,7 @@ class IngestStage:
         kind = cast(Kind, details["kind"])
         item = CatalogueItem(
             source="google",
-            source_key=entry.path,
+            source_key=entry.key,
             kind=kind,
             original_path=str(details["locator"]),
             sidecar_path=None if details["sidecar"] is None else str(details["sidecar"]),

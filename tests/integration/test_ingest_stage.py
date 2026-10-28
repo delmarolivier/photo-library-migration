@@ -428,3 +428,47 @@ def test_each_item_records_the_size_of_its_original(applied) -> None:  # type: i
         archive = manifest.zips[manifest.parts[key] - 1]
         with zipfile.ZipFile(archive) as bundle:
             assert row.size == bundle.getinfo(key).file_size, key
+
+
+def test_same_named_photos_in_two_archives_are_two_items_with_their_own_sidecars(
+    tmp_path: Path,
+) -> None:
+    # takeout-<stamp>-1-001.zip and takeout-<stamp>-2-001.zip both hold
+    # "Photos from 2018/IMG_2972.JPG", each with its own sidecar: two different photos.
+    march, august = datetime(2018, 3, 19, 5, 19, 37, tzinfo=UTC), datetime(2018, 8, 10, tzinfo=UTC)
+    for archive, taken, seed in (("1", march, 21), ("2", august, 22)):
+        b = TakeoutBuilder(seed=seed)
+        b.photo("Photos from 2018", "IMG_2972.JPG", taken=taken)
+        b.write_zips(tmp_path / "in", export=f"20261021T144622Z-{archive}")
+
+    ingest(tmp_path / "in", tmp_path, apply=True)
+
+    stored = items(tmp_path)
+    first = f"{ROOT}/Photos from 2018/IMG_2972.JPG"
+    second = "Takeout-2/Google Photos/Photos from 2018/IMG_2972.JPG"
+    assert set(stored) == {first, second}
+    assert stored[first].sidecar_path == f"{first}.supplemental-metadata.json"
+    assert stored[second].sidecar_path == f"{second}.supplemental-metadata.json"
+    assert candidates(tmp_path, first)["sidecar-taken"] == march
+    assert candidates(tmp_path, second)["sidecar-taken"] == august
+
+
+def test_an_album_split_across_archives_keeps_every_member(tmp_path: Path) -> None:
+    # The album's metadata.json is in one archive; some of its photos are in another.
+    taken = datetime(2019, 7, 1, tzinfo=UTC)
+    early = TakeoutBuilder(seed=23)
+    early.photo("Trip", "IMG_1.JPG", taken=taken)
+    early.write_zips(tmp_path / "in", export="20261021T144622Z-1")
+    late = TakeoutBuilder(seed=24)
+    late.album("Trip")
+    late.photo("Trip", "IMG_2.JPG", taken=taken)
+    late.write_zips(tmp_path / "in", export="20261021T144622Z-3")
+
+    result = ingest(tmp_path / "in", tmp_path, apply=True)
+
+    assert [a.target for a in result.plan.actions if a.kind == "album"] == [f"{ROOT}/Trip"]
+    with Catalogue.open(tmp_path / "catalogue.sqlite") as catalogue:
+        (album,) = catalogue.albums()
+        assert album.title == "Trip"
+        assert album.id is not None
+        assert len(catalogue.album_members(album.id)) == 2

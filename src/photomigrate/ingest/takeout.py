@@ -1,7 +1,13 @@
 """Reading a Google Takeout export: its zip parts, or a tree someone already unzipped.
 
 Only ``Takeout/Google Photos/`` matters; everything else is counted and ignored. Nothing here
-writes to the zips or to an extracted tree. ``extract`` copies zip entries into a destination
+writes to the zips or to an extracted tree.
+
+A big export comes as several archives, each split into parts:
+``takeout-<stamp>-<archive>-<part>.zip``. Google numbers clashing names within one archive but
+not across archives, so two archives can hold different files under the same path. An entry's
+``key`` tells them apart: the path itself in the first archive, ``Takeout-<archive>/...`` in the
+others. ``extract`` copies zip entries into a destination
 as read-only originals and refuses to replace one that differs.
 """
 
@@ -9,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import tempfile
 import zipfile
 import zlib
@@ -21,6 +28,7 @@ from types import TracebackType
 from typing import Self
 
 PHOTOS_PREFIX = "Takeout/Google Photos/"
+_ARCHIVE = re.compile(r"-(\d+)-\d{3}\.zip$")
 
 
 class TakeoutError(RuntimeError):
@@ -37,6 +45,15 @@ class Entry:
     crc32: int | None
     modified: datetime
     """The zip entry's (or file's) timestamp, naive local time."""
+    archive: str | None = None
+    """The archive its part belongs to (``takeout-<stamp>-<archive>-<part>.zip``), if numbered."""
+
+    @property
+    def key(self) -> str:
+        """The entry's identity in this Takeout, unique across archives."""
+        if self.archive in (None, "1"):
+            return self.path
+        return f"Takeout-{self.archive}/{self.path.removeprefix('Takeout/')}"
 
 
 def _safe(name: str) -> str:
@@ -73,11 +90,14 @@ class Takeout:
         self._part_of: dict[str, str] = {}
         self.ignored = 0
         entries = self._zip_entries() if parts else self._tree_entries()
-        self.entries = tuple(sorted(entries, key=lambda e: e.path))
+        self.entries = tuple(sorted(entries, key=lambda e: e.key))
+        self._by_locator = {self.locator(entry): entry for entry in self.entries}
 
     def _zip_entries(self) -> list[Entry]:
         entries = []
         for part, bundle in self._zips.items():
+            numbered = _ARCHIVE.search(part)
+            archive = numbered.group(1) if numbered else None
             for info in bundle.infolist():
                 name = _safe(info.filename)
                 if info.is_dir():
@@ -85,16 +105,17 @@ class Takeout:
                 if not name.startswith(PHOTOS_PREFIX):
                     self.ignored += 1
                     continue
-                known = self._where.get(name)
+                entry = Entry(
+                    name, part, info.file_size, info.CRC, datetime(*info.date_time), archive
+                )
+                known = self._where.get(entry.key)
                 if known is not None:
                     if (known.CRC, known.file_size) != (info.CRC, info.file_size):
                         raise TakeoutError(f"{name} has different contents in two zip parts")
                     continue
-                self._where[name] = info
-                self._part_of[name] = part
-                entries.append(
-                    Entry(name, part, info.file_size, info.CRC, datetime(*info.date_time))
-                )
+                self._where[entry.key] = info
+                self._part_of[entry.key] = part
+                entries.append(entry)
         return entries
 
     def _tree_entries(self) -> list[Entry]:
@@ -112,22 +133,20 @@ class Takeout:
             )
         return entries
 
-    def read(self, path: str) -> bytes:
+    def read(self, key: str) -> bytes:
+        """The bytes of the entry with this ``key``."""
         if not self.parts:
-            if not any(entry.path == path for entry in self.entries):
-                raise KeyError(path)
-            return (self.root / path).read_bytes()
-        return self._zips[self._part_of[path]].read(self._where[path])
+            if not any(entry.key == key for entry in self.entries):
+                raise KeyError(key)
+            return (self.root / key).read_bytes()
+        return self._zips[self._part_of[key]].read(self._where[key])
 
     def locator(self, entry: Entry) -> str:
         """Where the original is, relative to the Takeout folder: ``<part>::<member>``."""
         return f"{entry.part}::{entry.path}" if entry.part else entry.path
 
     def entry(self, locator: str) -> Entry:
-        for entry in self.entries:
-            if self.locator(entry) == locator:
-                return entry
-        raise KeyError(locator)
+        return self._by_locator[locator]
 
     @contextmanager
     def local_copy(self, entry: Entry, scratch: Path) -> Iterator[tuple[Path, str]]:
@@ -144,7 +163,7 @@ class Takeout:
             copy = Path(holder) / f"original{PurePosixPath(entry.path).suffix}"
             digest = hashlib.sha256()
             with (
-                self._zips[entry.part].open(self._where[entry.path]) as source,
+                self._zips[entry.part].open(self._where[entry.key]) as source,
                 copy.open("wb") as target,
             ):
                 while chunk := source.read(1 << 20):
@@ -154,7 +173,7 @@ class Takeout:
 
     def original(self, entry: Entry, extracted: Path) -> Path:
         """Where the untouched original of ``entry`` lives (once extracted)."""
-        return (extracted if entry.part else self.root) / entry.path
+        return extracted / entry.key if entry.part else self.root / entry.path
 
     def extract(self, part: str, dest: Path) -> int:
         """Extract the Google Photos entries of one zip part. Returns how many were written."""
@@ -166,14 +185,14 @@ class Takeout:
             for entry in self.entries:
                 if entry.part != part:
                     continue
-                target = dest / entry.path
+                target = dest / entry.key
                 if target.exists():
                     if target.stat().st_size != entry.size or _crc32(target) != entry.crc32:
                         raise TakeoutError(f"extracted original differs from the zip: {target}")
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 staged = Path(scratch) / f"{written}"
-                staged.write_bytes(self.read(entry.path))
+                staged.write_bytes(self.read(entry.key))
                 os.chmod(staged, 0o444)
                 stamp = entry.modified.timestamp()
                 os.utime(staged, (stamp, stamp))
