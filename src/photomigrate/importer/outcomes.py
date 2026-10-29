@@ -15,7 +15,8 @@ Every Google item gets exactly one outcome:
   highlights group, or a Google creation, which is never imported without a yes).
 
 A confirmed duplicate wins over a rejection, a rejection over a pending question, except that
-the copies of a keeper the review turned down are turned down with it (``partner``).
+the copies of a keeper the review turned down are turned down with it (``partner``); a keeper
+whose edit was kept in its place still counts as kept, so its copies stay duplicates.
 
 Existing iCloud items the review rejected (a confirmed duplicate of another item, a
 best-shot loser, one left out of its year's highlights, a removed date batch, clutter, quality
@@ -130,10 +131,12 @@ def outcomes(catalogue: Catalogue) -> dict[int, Outcome]:
             result[item_id] = Outcome(item_id, "follows", "live photo", found.follows[item_id])
         elif item_id in found.duplicate_of:
             partner = found.duplicate_of[item_id]
-            if partner is not None and found.rejected.get(partner):
+            turned_down = [
+                r for r in found.rejected.get(partner or 0, []) if r != "original version"
+            ]  # a keeper that only gave way to its own edit is still the photo kept
+            if turned_down:
                 # the keeper itself was turned down: its copies go with it
-                reason = found.rejected[partner][0]
-                result[item_id] = Outcome(item_id, "rejected-by-user", reason, partner)
+                result[item_id] = Outcome(item_id, "rejected-by-user", turned_down[0], partner)
             else:
                 result[item_id] = Outcome(item_id, "duplicate-of-existing", "duplicates", partner)
         elif found.rejected.get(item_id):

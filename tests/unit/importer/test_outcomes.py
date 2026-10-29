@@ -317,3 +317,25 @@ def test_an_edit_of_a_copy_of_a_turned_down_keeper_goes_too(cat: Catalogue) -> N
     cat.set_decision("group", event, "highlights", {"keep": [name(cat, other)]})
 
     assert outcomes(cat)[edit] == Outcome(edit, "rejected-by-user", "highlights", original)
+
+
+def test_a_copy_of_a_keeper_that_keeps_only_its_edit_is_a_duplicate_and_so_is_its_edit(
+    cat: Catalogue,
+) -> None:
+    keeper, keeper_edit = edit_of(cat, "IMG_1500.JPG")
+    copy, copy_edit = edit_of(cat, "IMG_1500(1).JPG")
+    for original, edit in ((keeper, keeper_edit), (copy, copy_edit)):
+        pair = next(
+            g.id for g in cat.groups("edit-pair")
+            if cat.group_members(g.id)[0][0] == original
+        )  # fmt: skip
+        cat.set_decision("group", pair, "edit-pair", {"keep": [cat.item(edit).source_key]})
+    dup = group(cat, "duplicate", "dup-15", [(keeper, "keeper"), (copy, "duplicate")],
+                keeper=name(cat, keeper))  # fmt: skip
+    cat.set_decision("group", dup, "duplicate", {"keeper": name(cat, keeper)})
+
+    found = outcomes(cat)
+
+    assert found[keeper_edit].status == "import"
+    assert found[copy] == Outcome(copy, "duplicate-of-existing", "duplicates", keeper)
+    assert found[copy_edit] == Outcome(copy_edit, "rejected-by-user", "duplicates", copy)

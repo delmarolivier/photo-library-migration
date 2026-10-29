@@ -35,6 +35,7 @@ from photomigrate.ingest.policy import local_zone
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.ingest.takeout import TakeoutError
 from photomigrate.report import reconcile, write_csv, write_html
+from photomigrate.review.accept import AcceptStage
 from photomigrate.review.app import create_app, serve
 from photomigrate.runner import (
     DEFAULT_CATALOGUE,
@@ -265,6 +266,35 @@ def analyse(
     except StageFailedError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@app.command()
+def accept(
+    ctx: typer.Context,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Record the answers (else a dry run).")
+    ] = False,
+    edit_only: Annotated[
+        bool,
+        typer.Option(
+            "--edit-only/--keep-pairs", help="Keep only the edit of an original and its edit."
+        ),
+    ] = True,
+    drop_flagged: Annotated[
+        bool,
+        typer.Option(
+            "--drop-flagged/--keep-flagged", help="Drop shots flagged as blurry, dark or tiny."
+        ),
+    ] = True,
+) -> None:
+    """Record every unanswered proposal as the review's answer (dates and places stay with the
+    review). Answers already given are kept, and the gallery can change any of them."""
+    settings: Settings = ctx.obj
+    stage = AcceptStage(edit_only=edit_only, drop_flagged=drop_flagged)
+    result = run_stage(
+        stage, catalogue_path=settings.catalogue, plan_dir=settings.plan_dir, apply=apply
+    )
+    render_result(result, Console())
 
 
 DEFAULT_THUMBS = Path("data/thumbs")

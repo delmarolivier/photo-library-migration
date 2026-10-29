@@ -8,10 +8,14 @@
   items alone (Delmar asked to go ahead without a GO for the Google-only steps).
 - Before the iCloud run: shut down the UTM VM (~3.7 GB) and OrbStack, and turn Spotlight off
   for `/Volumes/Photos` (Delmar's choice, 2026-10-28).
-- Next: Delmar moves the Photos library to `/Volumes/Photos`, turns on Download Originals and
-  gives the Claude app Full Disk Access (planned 2026-10-28). Then `index`, re-`analyse`, and
-  the review in the gallery. Nothing touches the library before that, and `import --apply`
-  still needs Delmar's GO.
+- Done (2026-10-29): the review is recorded. Delmar approved a year-by-year proposal (too
+  many cards to click), and `photomigrate accept --apply` recorded every unanswered proposal
+  as the answer: one version per edit (the edit), quality-flagged shots dropped, dates and
+  places left to the gallery. To iCloud: 10,016 photos (9.0 GB) and 1,765 videos (63.3 GB);
+  3,086 existing iCloud items go to "To Delete". Catalogue backup from just before:
+  `/Volumes/Photos/photomigrate/catalogue-before-accept.sqlite`.
+- Next: back up the Photos library, `confirm-backup`, an `import` dry run, then
+  `import --apply` on Delmar's GO. The Dates (90 batches) and Locations queues are optional.
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
@@ -22,6 +26,22 @@
     `.smx`): they are flagged, not ingested. Decide whether to support `.3g2`.
 
 ## Session log
+### 2026-10-29: session 3 (continued): the review, recorded
+- Gallery fixes from Delmar's first look: a "Remove these" answer on Dates (nothing in the
+  batch is imported); map tiles served through the gallery with a User-Agent and a disk cache
+  (OpenStreetMap blocked the browser's requests); the Dates queue leaves out what other
+  queues drop (163 batches to 90).
+- Delmar: clicking through 100k cards is impossible; propose the keep set year by year
+  instead. The proposal page (local, family photos, not published) showed every year's counts
+  and samples; Delmar approved it.
+- New `photomigrate accept` stage (dry run unless `--apply`): records each unanswered proposal,
+  with `--edit-only/--keep-pairs` and `--drop-flagged/--keep-flagged`. 100,902 answers.
+- Bug found by comparing the recorded keep set with the projection: a copy of a keeper whose
+  edit was kept in its place took "original version" as its reason, so the copy's own edit
+  was imported too. A keeper that only gave way to its edit now still counts as kept; its
+  copies are duplicates and their edits go with them. That removed 1,113 more edits (567
+  byte-identical to a kept edit, 540 edits of low-resolution copies).
+
 ### 2026-10-27/28: session 3: the real Takeout on the Air
 - Takeout: 46 parts in three archives (`-1-001..022`, `-2-001..023`, `-3-001`), 444 GB,
   downloaded in Chrome straight to `/Volumes/Photos/takeout` (copied cookies stopped working
