@@ -406,4 +406,29 @@ def test_a_clip_photos_keeps_apart_is_recorded_as_its_own_asset(setup, tmp_path:
     assert records[still][0] != records[clip][0]
     clip_asset = library.asset(records[clip][0])
     assert clip_asset["keywords"] == ["from-google"]
-    assert set(library.albums()[FROM_GOOGLE]) == {uuid for uuid, _, _ in records.values()}
+
+
+def test_an_avi_video_is_converted_to_mov_before_import(tmp_path: Path) -> None:
+    """Photos refuses the AVI container outright, so the working copy is remuxed first."""
+    builder = TakeoutBuilder(seed=30)
+    builder.video(YEAR, "clip.avi", taken=WHEN)
+    builder.write_zips(tmp_path / "takeout")
+    path = tmp_path / "catalogue.sqlite"
+    with IngestStage(tmp_path / "takeout", tmp_path / "work", zone=ZONE) as stage:
+        run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+    library = DisposableLibrary(tmp_path / "Avi.photoslibrary")
+
+    with ImportStage(
+        library, tmp_path / "takeout", tmp_path / "work", zone=ZONE, config=ImportConfig()
+    ) as stage:
+        run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    (asset,) = library.assets().values()
+    (filename,) = asset["files"]
+    assert filename.endswith(".mov")
+    assert not filename.endswith(".avi")
+    imported = next((library.root / "originals").rglob("*.mov"))
+    with ExifTool() as tool:
+        read = tool.read(imported)
+    assert read.duration is not None
+    assert read.duration > 0

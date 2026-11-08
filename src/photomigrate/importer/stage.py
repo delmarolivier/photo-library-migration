@@ -17,6 +17,10 @@ an approved place, imports the batch into the album "From Google", then sets fav
 captions and keywords (``People/…``, ``date-approx``, ``location-inferred``, ``from-google``),
 adds each asset to its Google albums, and records the import (Photos uuid, working copy
 SHA-256). The scratch folder goes with the batch. Recorded items are never imported again.
+
+Photos refuses the AVI container outright (old camcorder exports use it), so an AVI working
+copy is remuxed into MOV first (``_transcode_avi``); exiftool then writes its metadata as for
+any other QuickTime file. A remux that fails (an exotic codec) falls back to a re-encode.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import shutil
+import subprocess
 import tempfile
 from collections.abc import Iterator, Sequence
 from datetime import datetime, tzinfo
@@ -45,6 +50,7 @@ FROM_GOOGLE = "From Google"
 TO_DELETE = "To Delete"
 FROM_GOOGLE_KEYWORD = "from-google"
 _GIGABYTE = 1_000_000_000
+_AVI_SUFFIXES = frozenset({".avi"})
 
 
 def _sha256(path: Path) -> str:
@@ -53,6 +59,31 @@ def _sha256(path: Path) -> str:
         while chunk := stream.read(1 << 20):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _transcode_avi(source: Path, dest: Path) -> None:
+    """Remux ``source`` (an AVI container Photos refuses) into ``dest`` as MOV.
+
+    A stream copy is tried first (lossless, fast); a codec MOV cannot hold falls back to a
+    full re-encode.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg is needed to import .avi videos (brew install ffmpeg)")
+    remux = [
+        ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(source),
+        "-c", "copy", "-map_metadata", "0", str(dest),
+    ]  # fmt: skip
+    # Fixed argv: our own values plus the file path; no shell.
+    done = subprocess.run(remux, capture_output=True, check=False)  # noqa: S603
+    if done.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+        return
+    reencode = [
+        ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(source),
+        "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-map_metadata", "0", str(dest),
+    ]  # fmt: skip
+    subprocess.run(reencode, capture_output=True, check=True)  # noqa: S603
 
 
 class ImportStage:
@@ -235,8 +266,13 @@ class ImportStage:
         place = approved_location(catalogue, item_id)
         if place is not None:
             plan = dataclasses.replace(plan, latitude=place[0], longitude=place[1], altitude=None)
-        dest = scratch / name
         with self.takeout.local_copy(self._entry(item), scratch) as (copy, _):
+            if copy.suffix.lower() in _AVI_SUFFIXES:
+                name = f"{PurePosixPath(name).stem}.mov"
+                converted = scratch / f".transcode-{item_id}.mov"
+                _transcode_avi(copy, converted)
+                copy = converted
+            dest = scratch / name
             if plan and can_write(name):
                 if self._exiftool is None:
                     self._exiftool = ExifTool()

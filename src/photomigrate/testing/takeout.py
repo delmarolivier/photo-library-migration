@@ -222,7 +222,7 @@ _IMAGE_FORMATS: dict[str, ImageFormat] = {
     ".heic": "HEIC",
     ".png": "PNG",
 }
-_CONTAINERS: dict[str, Container] = {".mp4": "mp4", ".mov": "mov"}
+_CONTAINERS: dict[str, Container] = {".mp4": "mp4", ".mov": "mov", ".avi": "avi"}
 
 
 class _Default(Enum):

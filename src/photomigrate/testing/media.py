@@ -23,7 +23,7 @@ from PIL import ExifTags, Image, ImageChops, ImageDraw, ImageFont
 pillow_heif.register_heif_opener()
 
 ImageFormat = Literal["JPEG", "HEIC", "PNG"]
-Container = Literal["mp4", "mov"]
+Container = Literal["mp4", "mov", "avi"]
 
 
 class MediaToolMissingError(RuntimeError):
@@ -194,7 +194,10 @@ def encode_video(
     created: datetime | None = None,
     content_id: str | None = None,
 ) -> bytes:
-    """A real H.264 clip in an MP4 or QuickTime container.
+    """A real H.264 clip in an MP4, QuickTime or AVI container.
+
+    AVI is for fixtures of the container Photos refuses to import (``import``'s
+    ``_transcode_avi`` converts it); ``content_id`` is QuickTime-only, so it is ignored there.
 
     ``content_id`` sets Apple's Live Photo key (``com.apple.quicktime.content.identifier``).
     """
@@ -218,10 +221,9 @@ def encode_video(
         if created:
             args += ["-metadata", f"creation_time={utc(created):%Y-%m-%dT%H:%M:%SZ}"]
         if content_id:
-            args += [
-                "-movflags", "use_metadata_tags",
-                "-metadata", f"com.apple.quicktime.content.identifier={content_id}",
-            ]  # fmt: skip
+            if container != "avi":
+                args += ["-movflags", "use_metadata_tags"]
+            args += ["-metadata", f"com.apple.quicktime.content.identifier={content_id}"]
         # Fixed argv built from our own values; no shell.
         subprocess.run([*args, str(out)], input=raw, check=True, capture_output=True)  # noqa: S603
         return out.read_bytes()

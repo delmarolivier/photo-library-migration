@@ -428,7 +428,7 @@ def test_unknown_extensions_are_rejected(builder: TakeoutBuilder) -> None:
     with pytest.raises(ValueError, match="photo extension"):
         builder.photo("Photos from 2019", "notes.txt", taken=TAKEN)
     with pytest.raises(ValueError, match="video extension"):
-        builder.video("Photos from 2019", "clip.avi", taken=TAKEN)
+        builder.video("Photos from 2019", "clip.wmv", taken=TAKEN)
 
 
 def test_copy_of_an_item_without_sidecar_has_none(builder: TakeoutBuilder) -> None:

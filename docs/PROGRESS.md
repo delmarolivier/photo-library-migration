@@ -14,8 +14,13 @@
   places left to the gallery. To iCloud: 10,016 photos (9.0 GB) and 1,765 videos (63.3 GB);
   3,086 existing iCloud items go to "To Delete". Catalogue backup from just before:
   `/Volumes/Photos/photomigrate/catalogue-before-accept.sqlite`.
-- Next: back up the Photos library, `confirm-backup`, an `import` dry run, then
-  `import --apply` on Delmar's GO. The Dates (90 batches) and Locations queues are optional.
+- Done (2026-11-08): library backed up to `/Volumes/Photos/backup/` and `confirm-backup` run.
+  `import --apply` on Delmar's GO got through the first batch (1,606 items) then stopped:
+  Photos refuses the `.avi` container outright (55 old camcorder clips). Fixed by remuxing
+  (falling back to re-encoding) any `.avi` working copy to `.mov` before handoff; see the
+  session log below.
+- Next: resume `import --apply` (it skips the 1,606 already-imported items), then `index --apply`
+  and `report` per the runbook. The Dates (90 batches) and Locations queues are optional.
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
@@ -26,6 +31,30 @@
     `.smx`): they are flagged, not ingested. Decide whether to support `.3g2`.
 
 ## Session log
+### 2026-11-08: session 4: the real import, and the AVI container Photos refuses
+- Backed up `/Volumes/Photos/Pictures/Photos Library.photoslibrary` (40 GB) to
+  `/Volumes/Photos/backup/` with Photos quit, verified (file count, size, opened the copy),
+  then `confirm-backup`. `import --apply` ran: batch one (1,606 items) imported cleanly, then
+  batch two failed on `32652-baba_13.avi` — "Photos did not import".
+- Root cause (confirmed on the catalogue, not guessed): 55 items in the keep set are `.avi`
+  files, mostly a Canon camcorder's `MVI_####.AVI` exports (2008-2014). Photos rejects the
+  AVI container itself, regardless of the inner codec (live ffmpeg test: H.264-in-AVI muxes
+  fine; Photos still refuses it).
+- Fix (Delmar: "Convert to MP4 first"): `importer/stage.py`'s `_working_copy` now remuxes an
+  `.avi` working copy to `.mov` (`_transcode_avi`, stream copy with `-map_metadata 0`; falls
+  back to an `libx264`/`aac` re-encode if the remux fails) before exiftool or Photos ever see
+  it. `.avi` was already excluded from `can_write()`, so its metadata was always going to be
+  set in Photos after import, not in the file — unchanged by this fix.
+  `testing/media.py` and `testing/takeout.py` gained `"avi"` as a real fixture container
+  (`TakeoutBuilder.video(..., "clip.avi", ...)`), with the QuickTime-only `-movflags` arg
+  guarded off for it; the old "`.avi` is rejected" unit test now uses `.wmv` instead, still
+  genuinely unsupported.
+- Tests added / coverage: 1 new integration test (avi -> mov, duration confirmed via
+  exiftool); 1,260 tests total, 99.92% coverage (gate 90%; the 3 uncovered lines are the
+  ffmpeg-missing guard and the re-encode fallback, both error paths not worth faking here).
+- Not yet done: resuming the real `import --apply`, then `index --apply` and the rehearsal
+  `report` (must say 0 unaccounted).
+
 ### 2026-10-29: session 3 (continued): the review, recorded
 - Gallery fixes from Delmar's first look: a "Remove these" answer on Dates (nothing in the
   batch is imported); map tiles served through the gallery with a User-Agent and a disk cache
