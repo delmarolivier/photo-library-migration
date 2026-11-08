@@ -23,8 +23,16 @@
   (backfilled + finished keywords/albums), verified consistent with the live library. The real
   cause of the stall was never `.avi`: Photos' one AppleScript call per batch has a practical
   limit around 700 items. See the session log below for all of this.
-- Next: resume `import --apply` with a smaller batch size (skips everything already
-  recorded), then `index --apply` and `report` per the runbook. The Dates (90 batches) and
+- Done (2026-11-08): resumed with `batch_gigabytes = 2.0`. The original crashed run's
+  "Cannot Import" dialog was still sitting unacknowledged in Photos, blocking every
+  AppleScript call; it (and 8 more from this session's own failed batches) had to be
+  dismissed by hand before any batch could succeed. Then a second, unrelated bug stopped the
+  run again: one item (`PeppaCapture11.png`) is actually JPEG bytes under a `.png` name (a
+  Picasa-era mislabelling), which `exiftool` refuses to write metadata into — and that refusal
+  was propagating uncaught, fatally stopping the whole run rather than just that item. Fixed;
+  see the session log below.
+- Next: resume `import --apply` (same smaller batch size), confirm it reaches the end of the
+  plan, then `index --apply` and `report` per the runbook. The Dates (90 batches) and
   Locations queues are optional.
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
@@ -93,9 +101,36 @@
     showed real `People/…` tags, confirming `_details` ran for real, not just the album add.
     Catalogue backed up first to
     `/Volumes/Photos/photomigrate/catalogue-before-orphan-reconcile-20261108T151153Z.sqlite`.
-- Not yet done: resuming the real `import --apply` for what is left (with a smaller
-  `batch_gigabytes` so a single AppleScript call stays well under the ~700-item cutoff found
-  above), then `index --apply` and the rehearsal `report` (must say 0 unaccounted).
+- Resumed with `batch_gigabytes = 2.0` (scratch config, not a default change) — 21 smaller
+  batches instead of 4. The first 8 all failed 100%: the original crashed run's own "Cannot
+  Import 5,084 Items" dialog was still open and unacknowledged in Photos, and a modal sheet
+  like that blocks every further AppleScript call against the app, not just the one that
+  raised it. Background clicks (`app_click`, AX press on the sheet's OK button) reported
+  success but never actually changed anything on screen, confirmed by screenshot three times
+  running; only full-screen control (Delmar approved it) with real clicks dismissed the ~9
+  stacked dialogs (the original plus one per failed batch, each matched to its batch by its
+  exact reported item count).
+- With the dialogs cleared, the run hit a second, genuinely separate bug: fatal error on
+  `114487-PeppaCapture11.png`, `exiftool could not write ... non-zero exit status: 1`. The
+  file's bytes are JPEG, not PNG (confirmed with `file`) — a Picasa-era mislabelling in the
+  Takeout (`software=Picasa` in its real Exif header) — and `exiftool` rightly refuses to
+  write metadata into a content/extension mismatch. `_working_copy` let that `MetadataError`
+  propagate uncaught, which aborted the *entire* run via `StageFailedError`, not just that one
+  item.
+  - Fix: catch `MetadataError` around the `exiftool.write()` call in `_working_copy`; on it,
+    keep the working copy's original bytes untouched (`shutil.copyfile`, same fallback path
+    already used for formats `can_write()` excludes) and return its metadata as "unwritten",
+    so Photos sets it directly after import instead. Warns (`PartialImportWarning`, reused)
+    rather than stopping the batch. 1 new integration test
+    (`test_a_file_whose_bytes_dont_match_its_extension_imports_with_its_metadata_unwritten`).
+    1,262 tests, 99.92% coverage.
+  - First attempt at the fix defensively `.unlink()`ed the destination before the fallback
+    copy — caught immediately by the project's own `no-delete-check`
+    (`tests/unit/test_no_delete_check.py`), which has no exemption for a genuine delete, only
+    for moves/renames. Fixed by dropping the `.unlink()` entirely: `shutil.copyfile` already
+    overwrites whatever is at `dest`, so it was both forbidden and unnecessary.
+- Not yet done: resuming the real `import --apply` for what is left (dialogs cleared, both
+  bugs fixed), then `index --apply` and the rehearsal `report` (must say 0 unaccounted).
 
 ### 2026-10-29: session 3 (continued): the review, recorded
 - Gallery fixes from Delmar's first look: a "Remove these" answer on Dates (nothing in the

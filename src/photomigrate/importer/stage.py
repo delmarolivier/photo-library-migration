@@ -26,6 +26,10 @@ Photos' own import call can also leave the odd file out of an otherwise-successf
 thousands, silently. Since that side effect can't be rolled back, every asset it did import is
 recorded regardless (``PartialImportWarning`` for the rest, which the next run retries as a
 smaller batch) rather than losing the whole batch's bookkeeping over one holdout.
+
+A working copy exiftool refuses outright (its real content doesn't match its extension, say a
+JPEG saved as ``.png``) keeps its original bytes untouched instead of failing the batch; its
+metadata goes in through Photos afterward, same as any other format exiftool cannot write.
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.config import ImportConfig
 from photomigrate.importer.library import PhotosLibrary
 from photomigrate.importer.outcomes import outcomes, to_delete
-from photomigrate.ingest.exif import ExifTool, MetadataWrite, can_write
+from photomigrate.ingest.exif import ExifTool, MetadataError, MetadataWrite, can_write
 from photomigrate.ingest.takeout import Entry, Takeout, open_takeout
 from photomigrate.runner import Action, JSONValue
 
@@ -299,7 +303,18 @@ class ImportStage:
             if plan and can_write(name):
                 if self._exiftool is None:
                     self._exiftool = ExifTool()
-                self._exiftool.write(copy, dest, plan)
+                try:
+                    self._exiftool.write(copy, dest, plan)
+                except MetadataError as exc:
+                    # Content exiftool refuses despite the extension (a mislabelled file, say
+                    # a JPEG saved as .png): keep going, and set it in Photos instead.
+                    warnings.warn(
+                        f"{exc} (keeping its metadata for Photos to set instead)",
+                        PartialImportWarning,
+                        stacklevel=2,
+                    )
+                    shutil.copyfile(copy, dest)  # overwrites any partial file exiftool left
+                    return dest, plan
                 return dest, MetadataWrite()
             shutil.copyfile(copy, dest)
         return dest, plan

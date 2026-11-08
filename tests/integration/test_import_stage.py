@@ -18,7 +18,7 @@ from photomigrate.ingest.exif import ExifTool
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.stage import IngestStage
 from photomigrate.runner import RunResult, run_stage
-from photomigrate.testing.media import synthetic_photo
+from photomigrate.testing.media import encode_image, synthetic_photo
 from photomigrate.testing.photos import DisposableLibrary
 from photomigrate.testing.takeout import Geo, TakeoutBuilder
 
@@ -473,3 +473,37 @@ def test_an_avi_video_is_converted_to_mov_before_import(tmp_path: Path) -> None:
         read = tool.read(imported)
     assert read.duration is not None
     assert read.duration > 0
+
+
+def test_a_file_whose_bytes_dont_match_its_extension_imports_with_its_metadata_unwritten(
+    tmp_path: Path,
+) -> None:
+    """exiftool refuses to write into a file whose real content doesn't match its extension
+    (a JPEG once saved as ``.png``, say); the file goes in untouched and Photos is asked to set
+    its metadata instead, rather than that one file stopping the whole batch."""
+    builder = TakeoutBuilder(seed=31)
+    item = builder.photo(YEAR, "fake.png", taken=WHEN, image=synthetic_photo(99))
+    jpeg_bytes = encode_image(synthetic_photo(99), "JPEG")
+    builder._files[item.path] = jpeg_bytes
+    builder.write_zips(tmp_path / "takeout")
+    path = tmp_path / "catalogue.sqlite"
+    with IngestStage(tmp_path / "takeout", tmp_path / "work", zone=ZONE) as stage:
+        run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+    library = DisposableLibrary(tmp_path / "Mismatch.photoslibrary")
+
+    with (
+        ImportStage(
+            library, tmp_path / "takeout", tmp_path / "work", zone=ZONE, config=ImportConfig()
+        ) as stage,
+        pytest.warns(Warning, match="could not write"),
+    ):
+        result = run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    assert result.applied == 1
+    (asset,) = library.assets().values()
+    (filename,) = asset["files"]
+    imported = next((library.root / "originals").rglob(filename))
+    assert imported.read_bytes() == jpeg_bytes, "the original bytes go through untouched"
+    assert asset["keywords"] == ["from-google"]
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.imports(), "still recorded, not lost"
