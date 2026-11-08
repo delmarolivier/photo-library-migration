@@ -24,6 +24,12 @@ class LibraryMismatchError(RuntimeError):
     """Photos has another library open than the one given."""
 
 
+class PhotoNotFoundError(RuntimeError):
+    """Photos' own scripting dictionary doesn't recognise this uuid, despite a database row for
+    it (seen for syndicated Shared-with-You items from Messages: a lightweight record, not a
+    real, scriptable library asset)."""
+
+
 class PhotosLibrary(Protocol):
     def import_assets(
         self, assets: Sequence[Sequence[Path]], album: str
@@ -35,21 +41,30 @@ class PhotosLibrary(Protocol):
         left an asset out of a batch it otherwise imported."""
         ...
 
-    def add_to_album(self, album: str, uuids: Sequence[str]) -> None: ...
+    def add_to_album(self, album: str, uuids: Sequence[str]) -> None:
+        """Raises ``PhotoNotFoundError`` for a uuid Photos' own scripting dictionary doesn't
+        recognise."""
+        ...
 
     def remove_from_album(self, album: str, uuids: Sequence[str]) -> None:
-        """Take assets out of an album; they stay in the library."""
+        """Take assets out of an album; they stay in the library. Raises ``PhotoNotFoundError``
+        as ``add_to_album`` does."""
         ...
 
     def set_details(
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]
     ) -> None:
-        """Set the favourite, the caption (if given), and add ``keywords`` to the asset's."""
+        """Set the favourite, the caption (if given), and add ``keywords`` to the asset's.
+        Raises ``PhotoNotFoundError`` as ``add_to_album`` does."""
         ...
 
-    def set_date(self, uuid: str, when: datetime) -> None: ...
+    def set_date(self, uuid: str, when: datetime) -> None:
+        """Raises ``PhotoNotFoundError`` as ``add_to_album`` does."""
+        ...
 
-    def set_location(self, uuid: str, latitude: float, longitude: float) -> None: ...
+    def set_location(self, uuid: str, latitude: float, longitude: float) -> None:
+        """Raises ``PhotoNotFoundError`` as ``add_to_album`` does."""
+        ...
 
 
 def _photoscript() -> ModuleType:
@@ -86,6 +101,12 @@ class PhotoscriptLibrary:
     def _album(self, name: str) -> Any:
         return self._photos.album(name) or self._photos.create_album(name)
 
+    def _photo(self, uuid: str) -> Any:
+        try:
+            return self._script.Photo(uuid)
+        except ValueError as exc:
+            raise PhotoNotFoundError(str(exc)) from exc
+
     def import_assets(
         self, assets: Sequence[Sequence[Path]], album: str
     ) -> list[tuple[str, ...] | None]:
@@ -105,17 +126,17 @@ class PhotoscriptLibrary:
         return uuids
 
     def add_to_album(self, album: str, uuids: Sequence[str]) -> None:
-        self._album(album).add([self._script.Photo(uuid) for uuid in uuids])
+        self._album(album).add([self._photo(uuid) for uuid in uuids])
 
     def remove_from_album(self, album: str, uuids: Sequence[str]) -> None:
         found = self._photos.album(album)
         if found is not None:
-            found.remove([self._script.Photo(uuid) for uuid in uuids])
+            found.remove([self._photo(uuid) for uuid in uuids])
 
     def set_details(
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]
     ) -> None:
-        photo = self._script.Photo(uuid)
+        photo = self._photo(uuid)
         photo.favorite = favorite
         if description is not None:
             photo.description = description
@@ -123,7 +144,7 @@ class PhotoscriptLibrary:
 
     def set_date(self, uuid: str, when: datetime) -> None:
         local = when.astimezone().replace(tzinfo=None) if when.tzinfo else when
-        self._script.Photo(uuid).date = local
+        self._photo(uuid).date = local
 
     def set_location(self, uuid: str, latitude: float, longitude: float) -> None:
-        self._script.Photo(uuid).location = (latitude, longitude)
+        self._photo(uuid).location = (latitude, longitude)

@@ -31,6 +31,16 @@
   Picasa-era mislabelling), which `exiftool` refuses to write metadata into — and that refusal
   was propagating uncaught, fatally stopping the whole run rather than just that item. Fixed;
   see the session log below.
+- Done (2026-11-08): resumed again; all 13 remaining `import-batch` actions went through (the
+  retry's own dialog had already cleared by itself before it needed dismissing). The run then
+  hit a third, genuinely different bug on the very first `stage-to-delete` action: Photos'
+  AppleScript dictionary refuses a uuid that `osxphotos` finds fine in the database — a
+  syndicated Shared-with-You item from Messages (5 total in the whole library), which gets a
+  database row but isn't a real, scriptable asset. Fixed: `stage-to-delete`,
+  `unstage-to-delete`, `set-date` and `set-location` now warn and skip such an item instead of
+  stopping the stage (not retried on a later run — nothing would ever make it succeed; the
+  warning is the only record, so these ≤5 items need a manual look if they matter to Delmar).
+  See the session log below.
 - Next: resume `import --apply` (same smaller batch size), confirm it reaches the end of the
   plan, then `index --apply` and `report` per the runbook. The Dates (90 batches) and
   Locations queues are optional.
@@ -129,8 +139,36 @@
     (`tests/unit/test_no_delete_check.py`), which has no exemption for a genuine delete, only
     for moves/renames. Fixed by dropping the `.unlink()` entirely: `shutil.copyfile` already
     overwrites whatever is at `dest`, so it was both forbidden and unnecessary.
-- Not yet done: resuming the real `import --apply` for what is left (dialogs cleared, both
-  bugs fixed), then `index --apply` and the rehearsal `report` (must say 0 unaccounted).
+- Resumed a third time: the 13 remaining `import-batch` actions (including the retry of
+  `batch-111459`, this time past the PNG without crashing — Photos itself refused
+  `PeppaCapture11.png` along with 334 others, "Unknown error") all succeeded; the "Cannot
+  Import 335 Items" dialog that followed had already been dismissed by the time full-screen
+  control was approved, so nothing needed clicking through this round.
+- A third, genuinely different bug then stopped the run on the first `stage-to-delete` action:
+  `photoscript.Photo('19EDFF50-…')` raised `ValueError: Invalid photo id`, even though
+  `osxphotos.PhotosDB(...).get_photo(...)` finds the same uuid fine (`intrash: false`,
+  `hidden: false`). Its `path` gave it away: `.../scopes/syndication/originals/1/....jpeg` — a
+  syndicated Shared-with-You item from Messages, which gets a database row but isn't a real,
+  scriptable Photos asset (confirmed only 5 such items exist in the whole library).
+  - Fix: `library.py` gained `PhotoNotFoundError`, raised by a new `PhotoscriptLibrary._photo()`
+    helper (now the single place every `photoscript.Photo(uuid)` call goes through) when
+    AppleScript doesn't recognise the uuid. `ImportStage.apply()` catches it around
+    `stage-to-delete`/`unstage-to-delete`, `set-date` and `set-location` — the only action
+    kinds that address an *existing* iCloud item by uuid — and warns (`PartialImportWarning`,
+    reused) instead of raising, so one unreachable existing item doesn't stop the whole stage.
+  - Unlike the import-side fixes, this one does *not* get retried by a later run: these three
+    action kinds use the runner's generic "already applied" tracking (by action key, in the
+    run log), which only knows success/failure, not "skipped" — adding a real third status
+    would need a schema migration on the live catalogue, disproportionate for ≤5 items that
+    could never succeed anyway (Photos will never recognise them). The warning at the time is
+    the only record; `DisposableLibrary` gained a matching `unaddressable=` for tests.
+  - First draft of the test asserted a later `plan()` would retry the skipped item — wrong, for
+    the reason above; the generic run-log tracking (not the stage's own `catalogue.staged()`
+    check) is what actually suppresses it. Fixed the test to assert no retry once that was
+    understood from a failing run, not guessed. 2 new integration tests, 1 new unit test
+    (`PhotoscriptLibrary` raising `PhotoNotFoundError`). 1,265 tests, 99.92% coverage.
+- Not yet done: resuming the real `import --apply` for what is left (all three bugs fixed),
+  then `index --apply` and the rehearsal `report` (must say 0 unaccounted).
 
 ### 2026-10-29: session 3 (continued): the review, recorded
 - Gallery fixes from Delmar's first look: a "Remove these" answer on Dates (nothing in the

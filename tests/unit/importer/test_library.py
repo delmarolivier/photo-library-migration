@@ -8,7 +8,11 @@ from typing import Any, ClassVar
 import pytest
 
 from photomigrate.importer import library as module
-from photomigrate.importer.library import LibraryMismatchError, PhotoscriptLibrary
+from photomigrate.importer.library import (
+    LibraryMismatchError,
+    PhotoNotFoundError,
+    PhotoscriptLibrary,
+)
 from photomigrate.testing.photos import DisposableLibrary
 
 
@@ -83,8 +87,11 @@ def test_existing_assets_can_be_added_by_hand(tmp_path: Path) -> None:
 
 class FakePhoto:
     store: ClassVar[dict[str, dict[str, Any]]] = {}
+    missing: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(self, uuid: str) -> None:
+        if uuid in FakePhoto.missing:
+            raise ValueError(f"Invalid photo id: {uuid}")
         self.__dict__["uuid"] = uuid
         FakePhoto.store.setdefault(uuid, {"keywords": [], "filename": uuid})
 
@@ -134,6 +141,7 @@ class FakePhotos:
 def photos(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakePhotos:
     fake = FakePhotos()
     FakePhoto.store = {}
+    FakePhoto.missing = frozenset()
     monkeypatch.setattr(
         module, "_photoscript", lambda: SimpleNamespace(PhotosLibrary=lambda: fake, Photo=FakePhoto)
     )
@@ -245,6 +253,18 @@ def test_photoscript_takes_assets_out_of_an_album(photos: FakePhotos, tmp_path: 
     library.remove_from_album("To Delete", ["U1"])
 
     assert removed == ["U1"]
+
+
+def test_photoscript_reports_a_uuid_its_own_dictionary_does_not_recognise(
+    photos: FakePhotos, tmp_path: Path
+) -> None:
+    library = PhotoscriptLibrary(tmp_path / "Real.photoslibrary")
+    FakePhoto.missing = frozenset({"GHOST"})
+
+    with pytest.raises(PhotoNotFoundError, match="GHOST"):
+        library.add_to_album("To Delete", ["GHOST"])
+    with pytest.raises(PhotoNotFoundError, match="GHOST"):
+        library.set_date("GHOST", datetime(2020, 1, 1))
 
 
 def test_photoscript_takes_nothing_out_of_an_album_that_does_not_exist(

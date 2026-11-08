@@ -16,13 +16,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from photomigrate.importer.library import PhotoNotFoundError
+
 
 class DisposableLibrary:
     """``pairs_live_photos=False`` behaves like Photos with files it cannot join (no matching
     Apple content identifiers): a still and its clip become two assets.
 
     ``refuses`` behaves like Photos silently leaving some files out of an otherwise-successful
-    batch (by the name of an asset's first file): everything else in the batch still imports."""
+    batch (by the name of an asset's first file): everything else in the batch still imports.
+
+    ``unaddressable`` behaves like a uuid Photos' own scripting dictionary won't recognise (a
+    syndicated Shared-with-You item, say): every method that would otherwise act on it raises
+    ``PhotoNotFoundError`` instead."""
 
     def __init__(
         self,
@@ -30,10 +36,12 @@ class DisposableLibrary:
         *,
         pairs_live_photos: bool = True,
         refuses: frozenset[str] = frozenset(),
+        unaddressable: frozenset[str] = frozenset(),
     ) -> None:
         self.root = root
         self.pairs_live_photos = pairs_live_photos
         self.refuses = refuses
+        self.unaddressable = unaddressable
         self.root.mkdir(parents=True, exist_ok=True)
         self._state = self.root / "library.json"
         if not self._state.exists():
@@ -84,13 +92,21 @@ class DisposableLibrary:
         self._save(state)
         return made
 
+    def _check(self, uuid: str) -> None:
+        if uuid in self.unaddressable:
+            raise PhotoNotFoundError(f"Invalid photo id: {uuid}")
+
     def add_to_album(self, album: str, uuids_: Sequence[str]) -> None:
+        for uuid in uuids_:
+            self._check(uuid)
         state = self._load()
         members = state["albums"].setdefault(album, [])
         members.extend(u for u in uuids_ if u not in members)
         self._save(state)
 
     def remove_from_album(self, album: str, uuids_: Sequence[str]) -> None:
+        for uuid in uuids_:
+            self._check(uuid)
         state = self._load()
         if album in state["albums"]:
             state["albums"][album] = [u for u in state["albums"][album] if u not in uuids_]
@@ -99,6 +115,7 @@ class DisposableLibrary:
     def set_details(
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]
     ) -> None:
+        self._check(uuid)
         state = self._load()
         asset = state["assets"][uuid]
         asset["favorite"] = favorite
@@ -108,11 +125,13 @@ class DisposableLibrary:
         self._save(state)
 
     def set_date(self, uuid: str, when: datetime) -> None:
+        self._check(uuid)
         state = self._load()
         state["assets"][uuid]["date"] = when.isoformat()
         self._save(state)
 
     def set_location(self, uuid: str, latitude: float, longitude: float) -> None:
+        self._check(uuid)
         state = self._load()
         state["assets"][uuid]["location"] = [latitude, longitude]
         self._save(state)

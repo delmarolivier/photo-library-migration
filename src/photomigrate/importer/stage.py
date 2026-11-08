@@ -30,6 +30,13 @@ smaller batch) rather than losing the whole batch's bookkeeping over one holdout
 A working copy exiftool refuses outright (its real content doesn't match its extension, say a
 JPEG saved as ``.png``) keeps its original bytes untouched instead of failing the batch; its
 metadata goes in through Photos afterward, same as any other format exiftool cannot write.
+
+An existing iCloud item Photos' own scripting dictionary won't address by uuid (seen for
+syndicated Shared-with-You items from Messages, which have a database row but aren't a real,
+scriptable asset) is skipped with a warning rather than stopping the whole stage. Unlike the
+cases above, this one is not retried by a later run (the run log still marks the action done,
+since nothing short of a schema change would tell a future ``plan()`` otherwise, and nothing
+would ever make the retry succeed): the warning at the time is the only record of it.
 """
 
 from __future__ import annotations
@@ -50,7 +57,7 @@ from photomigrate.analyse.date_fixes import planned_write
 from photomigrate.analyse.locations import INFERRED_KEYWORD, approved_location
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.config import ImportConfig
-from photomigrate.importer.library import PhotosLibrary
+from photomigrate.importer.library import PhotoNotFoundError, PhotosLibrary
 from photomigrate.importer.outcomes import outcomes, to_delete
 from photomigrate.ingest.exif import ExifTool, MetadataError, MetadataWrite, can_write
 from photomigrate.ingest.takeout import Entry, Takeout, open_takeout
@@ -64,7 +71,10 @@ _AVI_SUFFIXES = frozenset({".avi"})
 
 
 class PartialImportWarning(UserWarning):
-    """Photos left one or more files out of an otherwise-successful import batch."""
+    """Something Photos (or exiftool) wouldn't fully do for one item; the rest of the run keeps
+    going regardless. A Google item left unimported or a working copy exiftool refused are
+    retried automatically by a later run; an existing iCloud item Photos won't address by uuid
+    is not (see ``apply``'s ``stage-to-delete``/``set-date``/``set-location`` handling)."""
 
 
 def _sha256(path: Path) -> str:
@@ -211,24 +221,38 @@ class ImportStage:
         if self.library is None:
             raise RuntimeError("a dry run has no Photos library to import into")
         if action.kind == "set-date":
-            self.library.set_date(action.target, datetime.fromisoformat(str(action.details["to"])))
-            self._keywords(catalogue, action.target, cast(list[str], action.details["keywords"]))
+            try:
+                self.library.set_date(
+                    action.target, datetime.fromisoformat(str(action.details["to"]))
+                )
+                self._keywords(
+                    catalogue, action.target, cast(list[str], action.details["keywords"])
+                )
+            except PhotoNotFoundError as exc:
+                warnings.warn(str(exc), PartialImportWarning, stacklevel=2)
         elif action.kind in ("stage-to-delete", "unstage-to-delete"):
             item_id = cast(int, catalogue.item_for_key("icloud", action.target))
-            if action.kind == "stage-to-delete":
-                self.library.add_to_album(TO_DELETE, [action.target])
-                catalogue.set_staged(item_id, str(action.details["reason"]))
-            else:
-                self.library.remove_from_album(TO_DELETE, [action.target])
-                catalogue.set_staged(item_id, None)
+            try:
+                if action.kind == "stage-to-delete":
+                    self.library.add_to_album(TO_DELETE, [action.target])
+                else:
+                    self.library.remove_from_album(TO_DELETE, [action.target])
+            except PhotoNotFoundError as exc:
+                warnings.warn(str(exc), PartialImportWarning, stacklevel=2)
+                return
+            reason = str(action.details["reason"]) if action.kind == "stage-to-delete" else None
+            catalogue.set_staged(item_id, reason)
         elif action.kind == "set-location":
             details = action.details
             latitude, longitude = (
                 cast(float, details["latitude"]),
                 cast(float, details["longitude"]),
             )
-            self.library.set_location(action.target, latitude, longitude)
-            self._keywords(catalogue, action.target, [INFERRED_KEYWORD])
+            try:
+                self.library.set_location(action.target, latitude, longitude)
+                self._keywords(catalogue, action.target, [INFERRED_KEYWORD])
+            except PhotoNotFoundError as exc:
+                warnings.warn(str(exc), PartialImportWarning, stacklevel=2)
         else:
             self._import(action, catalogue)
 

@@ -9,7 +9,7 @@ import pytest
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.config import ImportConfig
 from photomigrate.importer.outcomes import to_delete
-from photomigrate.importer.stage import TO_DELETE, ImportStage
+from photomigrate.importer.stage import TO_DELETE, ImportStage, PartialImportWarning
 from photomigrate.runner import RunResult, run_stage
 from photomigrate.testing.photos import DisposableLibrary
 from photomigrate.testing.takeout import TakeoutBuilder
@@ -101,3 +101,37 @@ def test_staging_twice_changes_nothing_and_a_dry_run_nothing_at_all(setup, tmp_p
     stage(setup, tmp_path)
 
     assert stage(setup, tmp_path).plan.actions == ()
+
+
+def test_an_item_photos_wont_address_is_skipped_but_others_still_stage(tmp_path: Path) -> None:
+    """A syndicated Shared-with-You item has a catalogue row but no real, scriptable asset."""
+    TakeoutBuilder(seed=1).write_zips(tmp_path / "takeout")
+    library = DisposableLibrary(tmp_path / "Test.photoslibrary", unaddressable=frozenset({"GHOST"}))
+    path = tmp_path / "catalogue.sqlite"
+    ids = {}
+    with Catalogue.open(path) as catalogue:
+        for uuid in ("GHOST", "GONE"):
+            ids[uuid] = catalogue.upsert_item(
+                CatalogueItem(source="icloud", source_key=uuid, kind="photo", title=f"{uuid}.HEIC")
+            )
+            catalogue.set_decision("item", ids[uuid], "clutter", {"reject": True})
+            library.add_existing(uuid, f"{uuid}.HEIC")
+
+    with (
+        ImportStage(
+            library, tmp_path / "takeout", tmp_path / "work", zone=ZONE, config=ImportConfig()
+        ) as importer,
+        pytest.warns(PartialImportWarning, match="GHOST"),
+    ):
+        result = run_stage(importer, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    assert result.plan.summary() == {"stage-to-delete": 2}
+    assert library.albums()[TO_DELETE] == ["GONE"], "the unaddressable one wasn't added"
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.staged() == {ids["GONE"]: "clutter"}, "only the real one is recorded"
+
+    with ImportStage(
+        library, tmp_path / "takeout", tmp_path / "work", zone=ZONE, config=ImportConfig()
+    ) as importer:
+        again = run_stage(importer, catalogue_path=path, plan_dir=tmp_path / "plans", apply=False)
+    assert again.plan.actions == (), "not retried: nothing would ever make it succeed"

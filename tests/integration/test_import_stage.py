@@ -13,11 +13,11 @@ from photomigrate.analyse.edited import EditedVersionsStage
 from photomigrate.catalogue import Catalogue, CatalogueItem
 from photomigrate.cli import app
 from photomigrate.config import ImportConfig
-from photomigrate.importer.stage import FROM_GOOGLE, ImportStage
+from photomigrate.importer.stage import FROM_GOOGLE, ImportStage, PartialImportWarning
 from photomigrate.ingest.exif import ExifTool
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.stage import IngestStage
-from photomigrate.runner import RunResult, run_stage
+from photomigrate.runner import Action, RunResult, run_stage
 from photomigrate.testing.media import encode_image, synthetic_photo
 from photomigrate.testing.photos import DisposableLibrary
 from photomigrate.testing.takeout import Geo, TakeoutBuilder
@@ -211,8 +211,6 @@ def test_pending_questions_hold_items_back(setup, tmp_path: Path) -> None:  # ty
 
 
 def test_an_action_for_an_item_that_is_gone_is_an_error(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
-    from photomigrate.runner import Action
-
     path, takeout, library = setup
     action = Action("import-batch", "batch-x", {"assets": [["GONE", None]], "bytes": 1})
     with (
@@ -221,6 +219,30 @@ def test_an_action_for_an_item_that_is_gone_is_an_error(setup, tmp_path: Path) -
         pytest.raises(KeyError, match="GONE"),
     ):
         stage.apply(action, catalogue)
+
+
+def test_an_item_photos_wont_address_is_skipped_for_dates_and_locations(
+    setup, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    """A uuid Photos' own scripting dictionary doesn't recognise (a syndicated Shared-with-You
+    item, say) warns and is skipped rather than stopping the whole stage."""
+    path, takeout, library = setup
+    library.unaddressable = frozenset({"UUID-5"})
+    with (
+        ImportStage(library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()) as stage,
+        Catalogue.open(path) as catalogue,
+    ):
+        with pytest.warns(PartialImportWarning, match="UUID-5"):
+            stage.apply(
+                Action("set-date", "UUID-5", {"to": "2012-01-01", "keywords": []}), catalogue
+            )
+        with pytest.warns(PartialImportWarning, match="UUID-5"):
+            stage.apply(
+                Action("set-location", "UUID-5", {"latitude": 1.0, "longitude": 2.0}), catalogue
+            )
+
+    asset = library.asset("UUID-5")
+    assert (asset["date"], asset["location"]) == (None, None)
 
 
 # --- the command ---------------------------------------------------------------------------
