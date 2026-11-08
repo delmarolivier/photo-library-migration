@@ -21,6 +21,11 @@ SHA-256). The scratch folder goes with the batch. Recorded items are never impor
 Photos refuses the AVI container outright (old camcorder exports use it), so an AVI working
 copy is remuxed into MOV first (``_transcode_avi``); exiftool then writes its metadata as for
 any other QuickTime file. A remux that fails (an exotic codec) falls back to a re-encode.
+
+Photos' own import call can also leave the odd file out of an otherwise-successful batch of
+thousands, silently. Since that side effect can't be rolled back, every asset it did import is
+recorded regardless (``PartialImportWarning`` for the rest, which the next run retries as a
+smaller batch) rather than losing the whole batch's bookkeeping over one holdout.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ import hashlib
 import shutil
 import subprocess
 import tempfile
+import warnings
 from collections.abc import Iterator, Sequence
 from datetime import datetime, tzinfo
 from pathlib import Path, PurePosixPath
@@ -51,6 +57,10 @@ TO_DELETE = "To Delete"
 FROM_GOOGLE_KEYWORD = "from-google"
 _GIGABYTE = 1_000_000_000
 _AVI_SUFFIXES = frozenset({".avi"})
+
+
+class PartialImportWarning(UserWarning):
+    """Photos left one or more files out of an otherwise-successful import batch."""
 
 
 def _sha256(path: Path) -> str:
@@ -245,7 +255,13 @@ class ImportStage:
             uuids = library.import_assets(
                 [[p for _, p, _ in asset] for asset in prepared], FROM_GOOGLE
             )
+            refused = []
             for asset, file_uuids in zip(prepared, uuids, strict=True):
+                if file_uuids is None:
+                    # Photos left this one out of an otherwise-successful batch; its item is
+                    # still unrecorded, so a later run plans it again in a fresh, smaller batch.
+                    refused.append(Path(asset[0][1]).name)
+                    continue
                 main, _, unwritten = asset[0]
                 self._details(catalogue, main, file_uuids[0], unwritten)
                 for uuid in sorted(set(file_uuids[1:]) - {file_uuids[0]}):
@@ -255,6 +271,13 @@ class ImportStage:
                     catalogue.record_import(
                         cast(int, member.id), uuid, _sha256(path), action.target
                     )
+            if refused:
+                warnings.warn(
+                    f"Photos did not import {len(refused)} of {len(prepared)} in "
+                    f"{action.target}: {', '.join(refused)} (will retry next run)",
+                    PartialImportWarning,
+                    stacklevel=2,
+                )
 
     def _working_copy(
         self, catalogue: Catalogue, item: CatalogueItem, scratch: Path

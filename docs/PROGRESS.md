@@ -17,10 +17,14 @@
 - Done (2026-11-08): library backed up to `/Volumes/Photos/backup/` and `confirm-backup` run.
   `import --apply` on Delmar's GO got through the first batch (1,606 items) then stopped:
   Photos refuses the `.avi` container outright (55 old camcorder clips). Fixed by remuxing
-  (falling back to re-encoding) any `.avi` working copy to `.mov` before handoff; see the
-  session log below.
-- Next: resume `import --apply` (it skips the 1,606 already-imported items), then `index --apply`
-  and `report` per the runbook. The Dates (90 batches) and Locations queues are optional.
+  (falling back to re-encoding) any `.avi` working copy to `.mov` before handoff.
+  Also found, before resuming: the failed batch had already imported 703 items into the real
+  library that the catalogue never recorded (a partial-batch bug, now fixed too); those 703
+  are real, live, untracked assets that need reconciling before the import can safely resume.
+  See the session log below for both.
+- Next: reconcile the 703 orphaned live assets, resume `import --apply` (skips everything
+  already recorded), then `index --apply` and `report` per the runbook. The Dates (90
+  batches) and Locations queues are optional.
 - Coverage: 100% line + branch (gate 90%)
 - Open questions for Delmar:
   - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
@@ -52,8 +56,27 @@
 - Tests added / coverage: 1 new integration test (avi -> mov, duration confirmed via
   exiftool); 1,260 tests total, 99.92% coverage (gate 90%; the 3 uncovered lines are the
   ffmpeg-missing guard and the re-encode fallback, both error paths not worth faking here).
-- Not yet done: resuming the real `import --apply`, then `index --apply` and the rehearsal
-  `report` (must say 0 unaccounted).
+- Second, independent bug found before resuming: `batch-025960`'s one AppleScript import call
+  (5,396 files) had already imported 703 of them into the real library (added to "From
+  Google") before hitting the `.avi` file and raising — and raising rolled back the whole
+  batch's catalogue bookkeeping, since Photos' own side effect can't be rolled back with it.
+  Confirmed live with `osxphotos`: 2,309 assets in the "From Google" album, only 1,606 carry
+  the `from-google` keyword that only a recorded import gets. 703 real, live-library assets
+  were invisible to the catalogue. Delmar: "fix bug + reconcile".
+  - Fix: `PhotosLibrary.import_assets` returns `None` per asset Photos silently left out of a
+    batch, instead of raising; `_import` records every asset Photos actually did import
+    (always, now) and only warns (`PartialImportWarning`, doesn't stop the run) about the
+    rest, which the next run's `plan()` naturally retries as a smaller batch (items without a
+    recorded import are never considered done). 1 new unit test
+    (`test_photoscript_marks_what_photos_silently_left_out_of_a_batch`) and 1 new integration
+    test (partial batch: the untouched items are recorded and detailed, the refused one is
+    not, and a fresh `plan()` picks it back up). `DisposableLibrary` gained `refuses=` to
+    simulate it. 1,261 tests, 99.92% coverage.
+  - Reconciliation of the 703 already-live, untracked assets is separate follow-up work (not
+    a code change): matching them to catalogue items by filename via `osxphotos`, back-filling
+    `imports`, and finishing their keywords/dates/albums the same way a normal import does.
+- Not yet done: reconciling the 703 orphaned live assets, resuming the real `import --apply`
+  for what is left, then `index --apply` and the rehearsal `report` (must say 0 unaccounted).
 
 ### 2026-10-29: session 3 (continued): the review, recorded
 - Gallery fixes from Delmar's first look: a "Remove these" answer on Dates (nothing in the

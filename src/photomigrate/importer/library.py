@@ -25,11 +25,14 @@ class LibraryMismatchError(RuntimeError):
 
 
 class PhotosLibrary(Protocol):
-    def import_assets(self, assets: Sequence[Sequence[Path]], album: str) -> list[tuple[str, ...]]:
+    def import_assets(
+        self, assets: Sequence[Sequence[Path]], album: str
+    ) -> list[tuple[str, ...] | None]:
         """Import each asset (one file, or a Live Photo's still and clip) into ``album``,
         created if needed. Returns the uuid of each file, asset by asset: a still and its clip
         share one when Photos joins them into a Live Photo, and get two when it does not
-        (files without matching Apple content identifiers)."""
+        (files without matching Apple content identifiers). ``None`` where Photos silently
+        left an asset out of a batch it otherwise imported."""
         ...
 
     def add_to_album(self, album: str, uuids: Sequence[str]) -> None: ...
@@ -83,17 +86,20 @@ class PhotoscriptLibrary:
     def _album(self, name: str) -> Any:
         return self._photos.album(name) or self._photos.create_album(name)
 
-    def import_assets(self, assets: Sequence[Sequence[Path]], album: str) -> list[tuple[str, ...]]:
+    def import_assets(
+        self, assets: Sequence[Sequence[Path]], album: str
+    ) -> list[tuple[str, ...] | None]:
         paths = [str(path) for asset in assets for path in asset]
         imported = self._photos.import_photos(
             paths, album=self._album(album), skip_duplicate_check=True
         )
         by_name = {photo.filename: photo.uuid for photo in imported}
-        uuids = []
+        uuids: list[tuple[str, ...] | None] = []
         for asset in assets:
             name = Path(asset[0]).name
             if name not in by_name:
-                raise RuntimeError(f"Photos did not import {name}")
+                uuids.append(None)
+                continue
             # a clip Photos joined to its still has no asset of its own
             uuids.append(tuple(by_name.get(Path(p).name, by_name[name]) for p in asset))
         return uuids

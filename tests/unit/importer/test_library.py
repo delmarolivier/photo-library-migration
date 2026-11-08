@@ -185,14 +185,23 @@ def test_photoscript_gives_an_unjoined_clip_its_own_uuid(
     ]
 
 
-def test_photoscript_says_which_file_photos_did_not_import(
+def test_photoscript_marks_what_photos_silently_left_out_of_a_batch(
     photos: FakePhotos, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     library = PhotoscriptLibrary(tmp_path / "Real.photoslibrary")
-    monkeypatch.setattr(photos, "import_photos", lambda paths, album, skip_duplicate_check: [])
+    left_out, still_in = touch(tmp_path, "2-a.jpg"), touch(tmp_path, "3-b.jpg")
 
-    with pytest.raises(RuntimeError, match=r"did not import 2-a\.jpg"):
-        library.import_assets([[touch(tmp_path, "2-a.jpg")]], "From Google")
+    def partial(paths: list[str], album: FakeAlbum, skip_duplicate_check: bool) -> list[FakePhoto]:
+        photo = FakePhoto("UUID-3-b.jpg")
+        photo.filename = "3-b.jpg"
+        return [photo]
+
+    monkeypatch.setattr(photos, "import_photos", partial)
+
+    assert library.import_assets([[left_out], [still_in]], "From Google") == [
+        None,
+        ("UUID-3-b.jpg",),
+    ]
 
 
 def test_photoscript_sets_details_dates_places_and_albums(

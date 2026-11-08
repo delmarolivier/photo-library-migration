@@ -19,11 +19,21 @@ from typing import Any
 
 class DisposableLibrary:
     """``pairs_live_photos=False`` behaves like Photos with files it cannot join (no matching
-    Apple content identifiers): a still and its clip become two assets."""
+    Apple content identifiers): a still and its clip become two assets.
 
-    def __init__(self, root: Path, *, pairs_live_photos: bool = True) -> None:
+    ``refuses`` behaves like Photos silently leaving some files out of an otherwise-successful
+    batch (by the name of an asset's first file): everything else in the batch still imports."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        pairs_live_photos: bool = True,
+        refuses: frozenset[str] = frozenset(),
+    ) -> None:
         self.root = root
         self.pairs_live_photos = pairs_live_photos
+        self.refuses = refuses
         self.root.mkdir(parents=True, exist_ok=True)
         self._state = self.root / "library.json"
         if not self._state.exists():
@@ -50,10 +60,15 @@ class DisposableLibrary:
         state["assets"][uuid] = _blank([filename])
         self._save(state)
 
-    def import_assets(self, assets: Sequence[Sequence[Path]], album: str) -> list[tuple[str, ...]]:
+    def import_assets(
+        self, assets: Sequence[Sequence[Path]], album: str
+    ) -> list[tuple[str, ...] | None]:
         state = self._load()
-        made: list[tuple[str, ...]] = []
+        made: list[tuple[str, ...] | None] = []
         for files in assets:
+            if Path(files[0]).name in self.refuses:
+                made.append(None)
+                continue
             groups = [list(files)] if self.pairs_live_photos else [[f] for f in files]
             asset_uuids = []
             for group in groups:

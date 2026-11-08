@@ -355,6 +355,47 @@ def test_what_cannot_be_written_into_a_file_is_set_in_photos(
     assert two["location"] == [45.76, 4.84]
 
 
+def test_what_photos_imports_is_recorded_even_when_it_silently_refuses_one(
+    setup,
+    tmp_path: Path,  # type: ignore[no-untyped-def]
+) -> None:
+    """Photos' one AppleScript call for a whole batch can leave an odd file out while the rest
+    import fine; since that can't be undone, everything it did import must still be recorded."""
+    path, takeout, _ = setup
+    two_key = f"{ROOT}/{YEAR}/IMG_0002.JPG"
+    with Catalogue.open(path) as catalogue:
+        two = catalogue.item_for_key("google", two_key)
+    library = DisposableLibrary(
+        tmp_path / "Partial.photoslibrary", refuses=frozenset({f"{two}-IMG_0002.JPG"})
+    )
+
+    with (
+        ImportStage(library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()) as stage,
+        pytest.warns(Warning, match="did not import"),
+    ):  # fmt: skip
+        result = run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    assert result.applied == 1, "the batch action still counts as applied"
+    assert by_file(library).keys() == {"IMG_0001.JPG", "IMG_0003.HEIC"}
+    with Catalogue.open(path) as catalogue:
+        records = catalogue.imports()
+        assert two not in records, "the refused item stays unrecorded, for a later retry"
+        assert set(records) == {
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0001.JPG"),
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.HEIC"),
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.MOV"),
+        }
+
+        with ImportStage(
+            library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()
+        ) as stage:
+            retry = list(stage.plan(catalogue))
+    assert any(
+        action.kind == "import-batch" and [two_key, None] in action.details["assets"]
+        for action in retry
+    ), "the next plan picks the refused item back up"
+
+
 def test_a_dry_run_stage_cannot_apply(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     from photomigrate.runner import Action
 
