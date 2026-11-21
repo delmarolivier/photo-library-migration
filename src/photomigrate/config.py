@@ -134,6 +134,10 @@ class ImportConfig:
     batch_gigabytes: float = 20.0
     """Originals streamed, prepared and imported together; their working copies must fit on
     the disk at once (the Air has about 40 GB free)."""
+    batch_items: int = 500
+    """Assets per batch, however small ``batch_gigabytes`` leaves it: one AppleScript import
+    call for thousands of (mostly small) files can outlast Photos' own AppleEvent timeout
+    regardless of their total size (Delmar, 2026-11-09)."""
 
 
 @dataclass(frozen=True)

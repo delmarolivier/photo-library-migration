@@ -7,6 +7,12 @@ decided what is a duplicate) and map each imported asset back by its file name, 
 importer makes unique. A Live Photo is imported as its still and clip together; Photos joins
 them into one asset.
 
+A big enough import call can outlast Photos' own AppleEvent timeout; Photos keeps importing
+regardless, so by the time our side gives up waiting, the call's own result (if any) no
+longer says what truly landed. On that crash, ``import_assets`` re-derives it from the album
+itself (the same by-filename matching as a successful call) instead of losing track of
+whatever Photos did finish.
+
 Nothing here deletes anything; the "To Delete" album is an album like any other.
 """
 
@@ -38,7 +44,8 @@ class PhotosLibrary(Protocol):
         created if needed. Returns the uuid of each file, asset by asset: a still and its clip
         share one when Photos joins them into a Live Photo, and get two when it does not
         (files without matching Apple content identifiers). ``None`` where Photos silently
-        left an asset out of a batch it otherwise imported."""
+        left an asset out of a batch it otherwise imported, or where a crashed import call
+        turns out not to have reached it either."""
         ...
 
     def add_to_album(self, album: str, uuids: Sequence[str]) -> None:
@@ -111,10 +118,15 @@ class PhotoscriptLibrary:
         self, assets: Sequence[Sequence[Path]], album: str
     ) -> list[tuple[str, ...] | None]:
         paths = [str(path) for asset in assets for path in asset]
-        imported = self._photos.import_photos(
-            paths, album=self._album(album), skip_duplicate_check=True
-        )
-        by_name = {photo.filename: photo.uuid for photo in imported}
+        target = self._album(album)
+        try:
+            imported = self._photos.import_photos(paths, album=target, skip_duplicate_check=True)
+            by_name = {photo.filename: photo.uuid for photo in imported}
+        except self._script.AppleScriptError:
+            # Photos can keep importing after our AppleEvent gives up waiting for a reply
+            # (seen on a batch of thousands): the album itself, not this crashed call's
+            # (absent) result, says what actually landed.
+            by_name = {photo.filename: photo.uuid for photo in target.photos()}
         uuids: list[tuple[str, ...] | None] = []
         for asset in assets:
             name = Path(asset[0]).name

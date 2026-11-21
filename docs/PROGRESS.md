@@ -41,10 +41,16 @@
   stopping the stage (not retried on a later run — nothing would ever make it succeed; the
   warning is the only record, so these ≤5 items need a manual look if they matter to Delmar).
   See the session log below.
-- Next: resume `import --apply` (same smaller batch size), confirm it reaches the end of the
-  plan, then `index --apply` and `report` per the runbook. The Dates (90 batches) and
-  Locations queues are optional.
-- Coverage: 100% line + branch (gate 90%)
+- Done (2026-11-09/21): hit and fixed a crashed-batch variant of the Nov 8 partial-import
+  bug (`batch_items` cap + crash recovery in `import_assets`), recovered 1,886 orphaned
+  imports, then resumed through a dialog-blocking stall and an 11-day gap of further,
+  apparently manual `import --apply` runs. 6,617 of 150,714 Google items now imported. See
+  the session log below.
+- Next: resume `import --apply` (9 batches left, ~4,098 pairs, ~29.8 GB), confirm it reaches
+  the end of the plan, then `index --apply` and `report` per the runbook (must reach 0
+  unaccounted). The Dates (90 batches) and Locations queues are optional. Not yet looked
+  into: why `duplicate-of-existing` rose from 852 to 1,129 during the gap.
+- Coverage: 99.92% line + branch (gate 90%)
 - Open questions for Delmar:
   - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
     real Takeout instead, or skip the rehearsal and go straight to the batched full import?
@@ -54,6 +60,60 @@
     `.smx`): they are flagged, not ingested. Decide whether to support `.3g2`.
 
 ## Session log
+### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
+- Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
+  `batch-032652` (5,195 items) crashed: `photoscript` raised `AppleScriptError` after Photos'
+  own AppleEvent timed out waiting for the import call to return.
+- Confirmed live (not assumed) that Photos kept importing in the background after our side
+  gave up: `osxphotos`/`Album.photos()` showed 1,902 (precisely 1,886 once matched back to
+  catalogue items) real assets physically in "From Google" with no `imports` row at all — a
+  second, independent flavour of the Nov 8 partial-batch bug, this time from a *crashed* call
+  rather than one that returned a `None` for a refused item.
+  - Fix: `PhotoscriptLibrary.import_assets` now wraps the `import_photos()` call in
+    `try/except AppleScriptError`, falling back to `target.photos()` (the album itself) for
+    the by-filename match instead of trusting a crashed call's absent result. 1 new unit test
+    (`test_photoscript_recovers_what_photos_actually_imported_before_a_crash`).
+  - Prevention: `ImportConfig` gained `batch_items = 500` — batches are now capped by item
+    count as well as `batch_gigabytes`, since a single AppleScript call's timeout tracks item
+    count (thousands of small files), not bytes. `plan()`'s batching takes whichever limit
+    comes first. 1 new unit test (`test_import_batches_also_have_an_item_cap`), 1 new
+    integration test (`test_imports_also_go_in_batches_of_the_configured_item_count`).
+    RUNBOOK.md updated. 1,268 tests, 99.92% coverage.
+  - Recovery (`scripts/recover_orphaned_import.py`, one-off, kept as an audit trail like the
+    Nov 8 reconciliation): matches the crashed batch's own saved plan JSON against a live
+    `Album.photos()` scan by the `{item_id}-{name}` filename convention, replays
+    `ImportStage._working_copy`/`_details` so the backfilled metadata is identical to a normal
+    import, and records each via `catalogue.record_import` in one transaction. Dry run first
+    (1,886/5,195 recovered, 3,309 "not yet imported" i.e. never reached before the crash, 0
+    mismatches against the sample), then `--apply`: "Recorded 1886 items as imported".
+    Verified against the live library afterwards.
+- This code fix (crash recovery + `batch_items` cap) sat uncommitted for 12 days — `uv run`
+  uses the local checkout regardless, so it was already active in every later `import --apply`
+  run, but it should have been committed the same session. Committed now (2026-11-21), along
+  with this entry.
+- Resumed again: completed without crashing, but Photos' own "Cannot Import Item" modal (for
+  `32652-baba_13.mov`) silently blocked all further AppleScript calls partway through — the
+  same dialog-blocking behaviour as Nov 8, distinguished from the crash above by having no
+  timeout/kill evidence in the log. Attempting to dismiss it via background accessibility
+  clicks failed silently (reported success, no visible effect); escalating to full-screen
+  control then revealed the real block: the screen was locked, which macOS itself disallows
+  Accessibility actions on, screen or no screen. Stopped there and asked Delmar to unlock,
+  rather than retrying.
+- Gap (11 days, not directly observed by this session): by 2026-11-21 the catalogue showed
+  6,617 imports, up from 2,309 at the end of session 4 — `batch-032652` grew from the 1,886
+  recovered to 2,495 (609 more imported normally once the dialog was cleared and the run
+  continued), plus four new, ordinarily-named batches (`batch-073974`/`080482`/`090784`/
+  `100627`, 500+500+572+241 = 1,813 items) that are not this session's or session 4's work.
+  No sign of another crash or recovery script — these read as plain further `import --apply`
+  runs, most likely Delmar resuming by hand after dismissing the dialog, now batching small
+  enough (the uncommitted `batch_items` cap) to go through cleanly. `report` confirms this is
+  healthy: unaccounted fell from 14,275 to 9,690, nothing else moved unexpectedly except
+  `duplicate-of-existing` (852 → 1,129, not yet investigated — plausibly just more Google
+  items reaching items already in iCloud via these further batches, not re-examined).
+- Not yet done: 9 `import-batch` actions remain (4,098 pairs, ~29.8 GB per a fresh dry run,
+  correctly capped at ≤500 items each), then `index --apply` and the final `report` (must
+  reach 0 unaccounted).
+
 ### 2026-11-08: session 4: the real import, and the AVI container Photos refuses
 - Backed up `/Volumes/Photos/Pictures/Photos Library.photoslibrary` (40 GB) to
   `/Volumes/Photos/backup/` with Photos quit, verified (file count, size, opened the copy),

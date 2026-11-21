@@ -174,6 +174,15 @@ def test_imports_go_in_batches_of_the_configured_size(setup, tmp_path: Path) -> 
     assert len(by_file(setup[2])) == 3
 
 
+def test_imports_also_go_in_batches_of_the_configured_item_count(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """A batch's own size budget isn't the only cap: thousands of tiny files in one AppleScript
+    import call can outlast Photos' AppleEvent timeout regardless of their total bytes."""
+    result = run_import(setup, tmp_path, config=ImportConfig(batch_items=1))
+
+    assert result.plan.summary() == {"import-batch": 3}, "a Live Photo's pair stays together"
+    assert len(by_file(setup[2])) == 3
+
+
 def test_answered_dates_and_approved_places_reach_existing_icloud_items(
     setup,
     tmp_path: Path,  # type: ignore[no-untyped-def]

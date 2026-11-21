@@ -4,7 +4,7 @@ Plan (a dry run unless ``--apply``):
 
 * ``import-batch``: the Google items whose outcome is ``import`` and that are not imported
   yet, a Live Photo's still and clip as one asset, in batches of ``[import] batch_gigabytes``
-  of originals.
+  of originals or ``[import] batch_items`` assets, whichever comes first.
 * ``set-date`` and ``set-location``: answered dates and approved places for existing iCloud
   items (Photos changes them in place, like osxphotos timewarp).
 * ``stage-to-delete`` and ``unstage-to-delete``: keep the album "To Delete" exactly the
@@ -164,6 +164,7 @@ class ImportStage:
         done = catalogue.imports()
         clips = {o.partner: o.item_id for o in found.values() if o.status == "follows"}
         limit = self.config.batch_gigabytes * _GIGABYTE
+        max_items = self.config.batch_items
         batch: list[JSONValue] = []
         size, first = 0, 0
         for item in catalogue.items("google"):
@@ -173,7 +174,7 @@ class ImportStage:
             clip = catalogue.item(clips[item_id]) if item_id in clips else None
             members = [item] if clip is None else [item, clip]
             weight = sum(self._entry(m).size for m in members)
-            if batch and size + weight > limit:
+            if batch and (size + weight > limit or len(batch) >= max_items):
                 yield self._batch(first, batch, size)
                 batch, size = [], 0
             if not batch:

@@ -137,6 +137,11 @@ def test_import_batches_have_a_size(tmp_path: Path) -> None:
     )
 
 
+def test_import_batches_also_have_an_item_cap(tmp_path: Path) -> None:
+    assert Config().importer.batch_items == 500
+    assert load_config(write(tmp_path, "[import]\nbatch_items = 50\n")).importer.batch_items == 50
+
+
 def test_highlights_default_to_a_fifth_of_each_year() -> None:
     highlights = Config().highlights
 

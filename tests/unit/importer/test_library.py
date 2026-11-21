@@ -109,6 +109,13 @@ class FakeAlbum:
     def add(self, photos: list[FakePhoto]) -> None:
         self.added.extend(p.uuid for p in photos)
 
+    def photos(self) -> list[FakePhoto]:
+        return [FakePhoto(uuid) for uuid in self.added]
+
+
+class FakeAppleScriptError(Exception):
+    pass
+
 
 class FakePhotos:
     def __init__(self) -> None:
@@ -143,7 +150,11 @@ def photos(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakePhotos:
     FakePhoto.store = {}
     FakePhoto.missing = frozenset()
     monkeypatch.setattr(
-        module, "_photoscript", lambda: SimpleNamespace(PhotosLibrary=lambda: fake, Photo=FakePhoto)
+        module,
+        "_photoscript",
+        lambda: SimpleNamespace(
+            PhotosLibrary=lambda: fake, Photo=FakePhoto, AppleScriptError=FakeAppleScriptError
+        ),
     )
     monkeypatch.setattr(module, "_open_library", lambda: str(tmp_path / "Real.photoslibrary"))
     return fake
@@ -209,6 +220,28 @@ def test_photoscript_marks_what_photos_silently_left_out_of_a_batch(
     assert library.import_assets([[left_out], [still_in]], "From Google") == [
         None,
         ("UUID-3-b.jpg",),
+    ]
+
+
+def test_photoscript_recovers_what_photos_actually_imported_before_a_crash(
+    photos: FakePhotos, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = PhotoscriptLibrary(tmp_path / "Real.photoslibrary")
+    survived, lost = touch(tmp_path, "1-a.jpg"), touch(tmp_path, "2-b.jpg")
+
+    def crashes_mid_import(
+        paths: list[str], album: FakeAlbum, skip_duplicate_check: bool
+    ) -> list[FakePhoto]:
+        photo = FakePhoto("UUID-1-a.jpg")
+        photo.filename = "1-a.jpg"
+        album.added.append(photo.uuid)  # Photos kept going after our AppleEvent gave up
+        raise FakeAppleScriptError("Photos got an error: AppleEvent timed out. (-1712)")
+
+    monkeypatch.setattr(photos, "import_photos", crashes_mid_import)
+
+    assert library.import_assets([[survived], [lost]], "From Google") == [
+        ("UUID-1-a.jpg",),
+        None,
     ]
 
 

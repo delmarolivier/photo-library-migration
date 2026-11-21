@@ -156,7 +156,8 @@ Same steps, same catalogue, all 12 parts. Ingest and index take hours, so run th
 5. Make a fresh copy of the library and run `confirm-backup` again (step 1).
 6. `uv run photomigrate import --takeout /Volumes/Photos/takeout --work-dir $W/work` → **GO** →
    the same with `--library "$L" --apply`. It imports in batches of
-   `[import] batch_gigabytes` (20). Before each sitting, check the free space on the drive
+   `[import] batch_gigabytes` (20) or `[import] batch_items` (500), whichever comes first.
+   Before each sitting, check the free space on the drive
    (`df -h /Volumes/Photos`). If it stops, run the same command again: imported items are
    skipped.
 7. After the import, quit Photos and index again (`--apply`).
