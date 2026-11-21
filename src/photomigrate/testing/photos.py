@@ -28,7 +28,11 @@ class DisposableLibrary:
 
     ``unaddressable`` behaves like a uuid Photos' own scripting dictionary won't recognise (a
     syndicated Shared-with-You item, say): every method that would otherwise act on it raises
-    ``PhotoNotFoundError`` instead."""
+    ``PhotoNotFoundError`` instead.
+
+    ``fails_details`` behaves like a transient AppleScript failure while setting an otherwise
+    successfully imported asset's details (by the name of its first file): ``set_details``
+    raises ``RuntimeError`` for it once, same as the 2026-11-21 "User canceled" incident."""
 
     def __init__(
         self,
@@ -37,11 +41,14 @@ class DisposableLibrary:
         pairs_live_photos: bool = True,
         refuses: frozenset[str] = frozenset(),
         unaddressable: frozenset[str] = frozenset(),
+        fails_details: frozenset[str] = frozenset(),
     ) -> None:
         self.root = root
         self.pairs_live_photos = pairs_live_photos
         self.refuses = refuses
         self.unaddressable = unaddressable
+        self.fails_details = fails_details
+        self._first_file_of: dict[str, str] = {}
         self.root.mkdir(parents=True, exist_ok=True)
         self._state = self.root / "library.json"
         if not self._state.exists():
@@ -87,6 +94,7 @@ class DisposableLibrary:
                     shutil.copy2(path, folder / Path(path).name)
                 state["assets"][uuid] = _blank([Path(p).name for p in group])
                 state["albums"].setdefault(album, []).append(uuid)
+                self._first_file_of[uuid] = Path(files[0]).name
                 asset_uuids.extend([uuid] * len(group))
             made.append(tuple(asset_uuids))
         self._save(state)
@@ -116,6 +124,8 @@ class DisposableLibrary:
         self, uuid: str, *, favorite: bool, description: str | None, keywords: Sequence[str]
     ) -> None:
         self._check(uuid)
+        if self._first_file_of.get(uuid) in self.fails_details:
+            raise RuntimeError("run_script 'photoSetKeywords' failed: User canceled. (-128)")
         state = self._load()
         asset = state["assets"][uuid]
         asset["favorite"] = favorite

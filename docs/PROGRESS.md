@@ -44,12 +44,21 @@
 - Done (2026-11-09/21): hit and fixed a crashed-batch variant of the Nov 8 partial-import
   bug (`batch_items` cap + crash recovery in `import_assets`), recovered 1,886 orphaned
   imports, then resumed through a dialog-blocking stall and an 11-day gap of further,
-  apparently manual `import --apply` runs. 6,617 of 150,714 Google items now imported. See
-  the session log below.
-- Next: resume `import --apply` (9 batches left, ~4,098 pairs, ~29.8 GB), confirm it reaches
-  the end of the plan, then `index --apply` and `report` per the runbook (must reach 0
-  unaccounted). The Dates (90 batches) and Locations queues are optional. Not yet looked
-  into: why `duplicate-of-existing` rose from 852 to 1,129 during the gap.
+  apparently manual `import --apply` runs.
+- Done (2026-11-21, continued): resuming the real import hit a *third* variant of the same
+  partial-import bug — this time Photos' import call itself succeeded for a whole 500-item
+  batch, but a later per-item metadata call failed and the batch's own transaction rolled
+  back every one of its (otherwise correct) catalogue records with it, orphaning the lot.
+  Fixed at the real root: `_import()` now records an item the moment Photos confirms it,
+  before attempting its metadata, so a metadata failure can never again undo an import.
+  Recovered the resulting 483 orphans (`scripts/recover_orphaned_import.py`, now
+  generalised to any batch, not just the Nov 9 one). 7,204 of 150,714 Google items now
+  imported. See the session log below.
+- Next: resume `import --apply` (8 batches left per a fresh dry run, 3,615 pairs, 28.04 GB),
+  confirm it reaches the end of the plan, then `index --apply` and `report` per the runbook
+  (must reach 0 unaccounted). The Dates
+  (90 batches) and Locations queues are optional. Not yet looked into: why
+  `duplicate-of-existing` rose from 852 to 1,129 during the Nov 10-21 gap.
 - Coverage: 99.92% line + branch (gate 90%)
 - Open questions for Delmar:
   - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
@@ -110,9 +119,52 @@
   healthy: unaccounted fell from 14,275 to 9,690, nothing else moved unexpectedly except
   `duplicate-of-existing` (852 → 1,129, not yet investigated — plausibly just more Google
   items reaching items already in iCloud via these further batches, not re-examined).
-- Not yet done: 9 `import-batch` actions remain (4,098 pairs, ~29.8 GB per a fresh dry run,
-  correctly capped at ≤500 items each), then `index --apply` and the final `report` (must
-  reach 0 unaccounted).
+- Committed the Nov 9 fix (crash recovery + `batch_items` cap) and recovery script, then
+  resumed `import --apply` for the 9 remaining batches. The confirmation prompt needs stdin
+  (`yes | ... --apply`) when run non-interactively; without it the command aborts cleanly
+  (nothing changed) rather than hanging.
+- Resumed import hit a *third* variant of the same partial-import bug, on the very first
+  batch (`batch-032652`'s next 500-item chunk): the bulk `import_assets()` call succeeded for
+  the whole batch (confirmed: "From Google" grew from 6,367 to 6,851, ~483 real assets), but
+  a later per-item `_details()` call (setting keywords) hit `run_script 'photoSetKeywords'
+  failed: User canceled. (-128)` after a timeout-triggered `killall`+relaunch of Photos —
+  and because the whole action still ran inside one `catalogue.transaction()`, that one
+  item's exception rolled back every `record_import` the batch had already made (there were
+  none yet in this case, since `_details` ran before `record_import` for each asset), leaving
+  all ~483 imported-for-real assets with zero catalogue record. Confirmed: catalogue
+  `imports()` total was unchanged after the failed run (still 6,617); checked for a stuck
+  dialog first (none — Photos had no window open at all, ruling out the Nov 8/9 dialog-block
+  pattern) before concluding this was a transient AppleScript hiccup, not a lingering block.
+  - Root-cause fix (`importer/stage.py`, `_import()`): each asset is now recorded via
+    `catalogue.record_import` as soon as `import_assets` confirms its uuid, *before*
+    `_details()` is attempted — not after, and not conditioned on it succeeding. A `_details`
+    failure (any exception, not just `PhotoNotFoundError`) now only warns
+    (`"...could not have their metadata set"`) and moves on to the next asset; it can never
+    again undo an already-real import. 1 new `DisposableLibrary` feature (`fails_details`,
+    matched by filename like `refuses`) and 1 new integration test
+    (`test_what_photos_imports_is_recorded_even_when_its_details_fail`). 1,269 tests, 99.92%
+    coverage.
+  - Recovery (`scripts/recover_orphaned_import.py`, generalised from the Nov 9 one-off into
+    `--plan`/`--batch-target` arguments, now that this is the second incident of this shape):
+    its own album scan was switched from `photoscript`'s live AppleScript enumeration to
+    `osxphotos` (direct, read-only database reads) after the former failed outright
+    ("Can't get media item id ... of album id ...", -1728) on an album this size — a third,
+    unrelated AppleScript flakiness, worked around rather than fixed (nothing here needs
+    AppleScript for reading, only the actual metadata writes do). Its per-item writes also
+    moved from one transaction for the whole run to one per item, so a failure during
+    *recovery* itself can't repeat the exact bug it exists to clean up after. Dry run (483
+    orphaned of 500, 17 never reached), then `--apply`: 480 recorded cleanly; 3 failed with
+    "Invalid photo id" for uuids Photos' scripting dictionary wouldn't address (confirmed via
+    `osxphotos`: real, local, non-trashed, non-syndicated JPEGs, just with no `cloud_guid`
+    yet — i.e. not yet settled with iCloud) even after quitting and relaunching Photos.
+    Matches the Nov 8 syndicated-item precedent closely enough to reuse it: catch
+    `PhotoNotFoundError` around `_details()` and record the import anyway (metadata left
+    unset) rather than leaving it to duplicate on a future run. Re-ran with that fix: all 3
+    recorded. Catalogue now 7,204 imports (480+3 recovered pairs plus their clips); live
+    "From Google" unchanged at 6,851 (recovery only adds bookkeeping, nothing new is
+    imported).
+- Not yet done: resume `import --apply` (8 batches left per a fresh dry run, 3,615 pairs,
+  28.04 GB), then `index --apply` and the final `report` (must reach 0 unaccounted).
 
 ### 2026-11-08: session 4: the real import, and the AVI container Photos refuses
 - Backed up `/Volumes/Photos/Pictures/Photos Library.photoslibrary` (40 GB) to

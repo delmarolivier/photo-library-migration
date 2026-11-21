@@ -285,6 +285,7 @@ class ImportStage:
                 [[p for _, p, _ in asset] for asset in prepared], FROM_GOOGLE
             )
             refused = []
+            undetailed = []
             for asset, file_uuids in zip(prepared, uuids, strict=True):
                 if file_uuids is None:
                     # Photos left this one out of an otherwise-successful batch; its item is
@@ -292,18 +293,36 @@ class ImportStage:
                     refused.append(Path(asset[0][1]).name)
                     continue
                 main, _, unwritten = asset[0]
-                self._details(catalogue, main, file_uuids[0], unwritten)
-                for uuid in sorted(set(file_uuids[1:]) - {file_uuids[0]}):
-                    # a clip Photos kept apart: same favourite, caption, keywords and albums
-                    self._details(catalogue, main, uuid, MetadataWrite())
+                # Photos already has this asset for real (import_assets returned its uuid):
+                # record it before anything below, so a metadata call failing can't roll this
+                # back and leave a real, physical import looking like it never happened -
+                # which a later run would then try to import again, duplicating it.
                 for (member, path, _), uuid in zip(asset, file_uuids, strict=True):
                     catalogue.record_import(
                         cast(int, member.id), uuid, _sha256(path), action.target
                     )
+                try:
+                    self._details(catalogue, main, file_uuids[0], unwritten)
+                    for uuid in sorted(set(file_uuids[1:]) - {file_uuids[0]}):
+                        # a clip Photos kept apart: same favourite, caption, keywords, albums
+                        self._details(catalogue, main, uuid, MetadataWrite())
+                except Exception as exc:
+                    # Already recorded above: this asset is imported either way, just left
+                    # with whatever metadata Photos gave it by default (seen for a transient
+                    # AppleScript failure, and for an asset Photos won't yet address by uuid -
+                    # same symptom as a syndicated Shared-with-You item).
+                    undetailed.append(f"{Path(asset[0][1]).name} ({exc})")
             if refused:
                 warnings.warn(
                     f"Photos did not import {len(refused)} of {len(prepared)} in "
                     f"{action.target}: {', '.join(refused)} (will retry next run)",
+                    PartialImportWarning,
+                    stacklevel=2,
+                )
+            if undetailed:
+                warnings.warn(
+                    f"{len(undetailed)} of {len(prepared)} in {action.target} imported but "
+                    f"could not have their metadata set: {', '.join(undetailed)}",
                     PartialImportWarning,
                     stacklevel=2,
                 )

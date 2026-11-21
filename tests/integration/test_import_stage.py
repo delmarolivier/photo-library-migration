@@ -427,6 +427,52 @@ def test_what_photos_imports_is_recorded_even_when_it_silently_refuses_one(
     ), "the next plan picks the refused item back up"
 
 
+def test_what_photos_imports_is_recorded_even_when_its_details_fail(
+    setup,
+    tmp_path: Path,  # type: ignore[no-untyped-def]
+) -> None:
+    """Unlike a refusal, Photos *did* import this one (import_assets returned its uuid) before
+    a later call setting its details failed - so, unlike a refusal, it must still be recorded;
+    only its metadata is left for a later look (2026-11-21: a timeout-triggered Photos relaunch
+    left one item's keyword-setting call "User canceled", which used to roll back and orphan
+    the whole batch, imported items and all, not just that one item)."""
+    path, takeout, _ = setup
+    two_key = f"{ROOT}/{YEAR}/IMG_0002.JPG"
+    with Catalogue.open(path) as catalogue:
+        two_id = catalogue.item_for_key("google", two_key)
+    library = DisposableLibrary(
+        tmp_path / "Flaky.photoslibrary", fails_details=frozenset({f"{two_id}-IMG_0002.JPG"})
+    )
+
+    with (
+        ImportStage(library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()) as stage,
+        pytest.warns(Warning, match="could not have their metadata set"),
+    ):  # fmt: skip
+        result = run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    assert result.applied == 1, "the batch action still counts as applied"
+    assert by_file(library).keys() == {"IMG_0001.JPG", "IMG_0002.JPG", "IMG_0003.HEIC"}
+    two = by_file(library)["IMG_0002.JPG"]
+    assert two["keywords"] == [], "its details were never set, unlike a normal import"
+    with Catalogue.open(path) as catalogue:
+        records = catalogue.imports()
+        assert set(records) == {
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0001.JPG"),
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0002.JPG"),
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.HEIC"),
+            catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.MOV"),
+        }, "the undetailed item is recorded too, so a later run never re-imports it"
+
+        with ImportStage(
+            library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()
+        ) as stage:
+            retry = list(stage.plan(catalogue))
+    assert not any(
+        action.kind == "import-batch" and [two_key, None] in action.details["assets"]
+        for action in retry
+    ), "recorded, so the next plan does not import (and duplicate) it again"
+
+
 def test_a_dry_run_stage_cannot_apply(setup, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     from photomigrate.runner import Action
 
