@@ -54,11 +54,20 @@
   Recovered the resulting 483 orphans (`scripts/recover_orphaned_import.py`, now
   generalised to any batch, not just the Nov 9 one). 7,204 of 150,714 Google items now
   imported. See the session log below.
-- Next: resume `import --apply` (8 batches left per a fresh dry run, 3,615 pairs, 28.04 GB),
-  confirm it reaches the end of the plan, then `index --apply` and `report` per the runbook
-  (must reach 0 unaccounted). The Dates
-  (90 batches) and Locations queues are optional. Not yet looked into: why
-  `duplicate-of-existing` rose from 852 to 1,129 during the Nov 10-21 gap.
+- Done (2026-11-21/22): resuming hit a *fourth* variant of the same bug class — this time
+  Photos' own AppleScript bridge hung completely (no exception, no CPU activity, no window)
+  for about 8 hours on `batch-032652`'s `import_assets()` call. 483 items had landed for real
+  with nothing recorded. Recovered with the existing script; see the session log below for the
+  much larger (473 of 485) unaddressable-metadata count this time, and why `photoscript`'s
+  retry wrapper can't rescue a hang like this on its own.
+- Next: resume `import --apply` (7 batches left: batch-114078 through batch-147164, plus
+  whatever `batch-032652`'s own still-missing 14 pairs add back into the next plan), confirm
+  it reaches the end of the plan, then `index --apply` and `report` per the runbook (must
+  reach 0 unaccounted). The Dates (90 batches) and Locations queues are optional. Not yet
+  looked into: why `duplicate-of-existing` rose from 852 to 1,129 during the Nov 10-21 gap.
+  Also not yet looked into: whether the 473 unaddressable items from this session become
+  addressable later (a retry pass for their metadata), and whether to make the remaining
+  7 batches' run supervised (auto-detect-and-recover a hang) rather than manually watched.
 - Coverage: 99.92% line + branch (gate 90%)
 - Open questions for Delmar:
   - The rehearsal sample (one shared album) is not on the Air. Rehearse on a slice of the
@@ -69,6 +78,58 @@
     `.smx`): they are flagged, not ingested. Decide whether to support `.3g2`.
 
 ## Session log
+### 2026-11-21/22: session 6: the retry that also hangs
+- Resumed `import --apply` for the 8 remaining batches (3,615 pairs, 28.04 GB) after
+  committing session 5's fix. The run's own pre-apply dry run and the confirm prompt went
+  fine; the very first batch's `import_assets()` call then hit `photoscript`'s "AppleScript
+  timed out: retrying killall + run_script" path once, Photos was killed and relaunched, and
+  the *retry* attempt then hung completely for about 8 hours: 0% CPU on both the python
+  process and Photos, no Photos window at all (`computer-use` `app_list_windows` → `[]`,
+  ruling out a stuck dialog same as session 5), and even a trivial read-only AppleScript probe
+  (`count of media items of album`) itself hung rather than erroring.
+- Read `photoscript`'s retry wrapper (`script_loader.py`) to understand why: it calls
+  `NSAppleScript.executeAppleEvent_error_` directly (an in-process Apple Event dispatch, not a
+  subprocess with its own timeout), and only reacts to a timeout *if* that call eventually
+  raises one. `tenacity`'s `stop_after_attempt(2)` means exactly one kill-and-retry; if the
+  retry's own native Apple Event call never raises (because Photos is still rebuilding itself
+  after being killed, on a 1.8 TB / 11,000+ item library on an external volume, say) there is
+  no second rescue — it can and did hang indefinitely with no further diagnostic output. This
+  project doesn't call `photoscript.configure_run_script()`, so it's on the library's default
+  (2 attempts, 5 s between). Not fixed yet (see "Next" above) — this run was recovered by hand
+  twice (see below), not by a code or config change.
+- Recovery (by hand, not yet automated): stopped the hung background task, force-killed Photos
+  (`pkill -9 -x Photos`, since even `tell application "Photos" to quit` needs the same stuck
+  AppleScript bridge), relaunched it, and confirmed via `osxphotos` (not AppleScript) that
+  the "From Google" album had grown from 6,851 to 7,334 — 483 real, physical imports with
+  nothing recorded, the same shape as session 5's incident but caused by a hang instead of an
+  exception. Ran `scripts/recover_orphaned_import.py` against this run's own apply plan
+  (`import-20261121T152222Z-apply.json`, `batch-032652`): 486 of the batch's 500 pairs were
+  already in Photos untracked (the other 14 genuinely hadn't been reached yet, and go back
+  into the next `plan()`).
+  - The recovery's own `--apply` hung too, the same way, partway through — recovered the same
+    way (kill, relaunch, confirm via `osxphotos`, no data lost since each item commits its own
+    transaction) and finished: 485 of 486 recorded, 1 failed outright (`photoSetKeywords ...
+    User canceled`) and needed one more `--apply` pass to record.
+  - New finding, much larger in scale than the Nov 8/21 precedent: 473 of the 485 recorded
+    items came back `PhotoNotFoundError` ("Invalid photo id") when `_details()` tried to set
+    their metadata — not the ≤5-item exception it was before. All 473 are still correctly
+    recorded (favourite/caption/keywords left unset, same fallback as the smaller precedent),
+    so nothing will be re-imported or duplicated; only cosmetic metadata is missing for now.
+    Plausible explanation, not confirmed: a 500-item chunk imported right before a hard
+    `killall` needs much longer than a few stray stragglers to finish whatever background
+    processing makes an item addressable via AppleScript (thumbnails/analysis/cloud
+    registration) on a library this size, so most of one whole batch was still "not ready"
+    when the recovery ran minutes later. Not yet confirmed whether these become addressable
+    later; a metadata-retry pass is suggested future work, not urgent (see "Next" above).
+  - Caused one more, smaller self-inflicted hang while investigating: an ad-hoc AppleScript
+    probe against one of the confirmed-bad uuids (`get favorite of media item id X of album
+    Y`, not the same call shape `photoscript.Photo(uuid)` uses) itself hung Photos' Apple
+    Event queue for the next ~90 s of unrelated queries too. Recovered the same way
+    (kill + relaunch). Lesson: don't probe a known-unaddressable uuid with an untested
+    AppleScript shape; stick to `photoscript`'s own addressing method or `osxphotos`.
+- Catalogue now 7,843 imports (`batch-032652` at 3,721; up from 3,082 by the 500 recorded
+  pairs' rows, still/clip pairs included).
+
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
   `batch-032652` (5,195 items) crashed: `photoscript` raised `AppleScriptError` after Photos'
