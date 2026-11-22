@@ -129,6 +129,25 @@
     AppleScript shape; stick to `photoscript`'s own addressing method or `osxphotos`.
 - Catalogue now 7,843 imports (`batch-032652` at 3,721; up from 3,082 by the 500 recorded
   pairs' rows, still/clip pairs included).
+- Resumed `import --apply` again for the real remaining 7 batches. It hung the *same* way a
+  third time, now within about 30 minutes rather than hours: 0% CPU on both processes, a safe
+  probe timing out twice, catalogue count frozen. Recovered the same way — except this
+  recovery round exposed a sharper, separate lesson: after the `pkill -9 -x Photos`, the
+  recovery script's own dry run was run *without* relaunching Photos first, and
+  `PhotoscriptLibrary.__init__` (`self._script.PhotosLibrary()`) sent an AppleScript event
+  unconditionally, even for a dry run that never needed one — which, addressed to an app that
+  wasn't running, implicitly tried to auto-launch it and then hung the same way, this time on
+  a call nothing in the batch itself could explain. Confirmed via `sample` (stuck inside
+  `-[NSAppleScript _executeAppleEvent:...]` → `AESendMessage` → `mach_msg`, i.e. a real,
+  pending Apple Event, not a Python-side hang) before concluding this, rather than guessing.
+  Fixed procedurally, not in code yet: always explicitly `open -a Photos "<library>"` and wait
+  for a responsive probe *before* running the recovery script at all, dry run included, since
+  its constructor isn't actually dry-run-safe. (A real fix would defer `PhotoscriptLibrary()`
+  construction past the `if not args.apply: return` check — not done this session.) Confirmed
+  via `osxphotos` that the hung batch had grown "From Google" from 7,334 to 7,782 (448 of 500
+  landed); recovered via the script once Photos was properly relaunched and responsive again,
+  which itself hit one more mid-run timeout+kill+retry (handled the same safe way, one
+  transaction per item).
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
