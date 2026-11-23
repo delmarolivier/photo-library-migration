@@ -157,6 +157,17 @@
   before a hard kill isn't done settling yet), consistent with the earlier, smaller sample.
   Catalogue now 8,410 imports (`batch-032652` at 4,288). A fresh dry run next (see "Next"
   above for the figures) to confirm what's genuinely left before resuming `import --apply`.
+- Resumed again (6 batches left); hung a *fourth* time, same shape, this time within about
+  25 minutes. Recovered the same way: confirmed via `osxphotos` that "From Google" grew from
+  7,782 to 8,229 (447 of the new `batch-032652` landed, nothing recorded), killed and
+  explicitly relaunched Photos, waited for a responsive probe, then ran the recovery script
+  against the fresh apply plan (`import-20261123T064646Z-apply.json`). Its own `--apply` hit
+  one more mid-run timeout+kill+retry (same safe per-item-transaction handling) and is still
+  running. At this point the pattern is clearly not a one-off: every resumption of this import
+  so far has hung within 25 minutes to 8 hours. A proper fix (an external watchdog that
+  detects staleness and recovers automatically, or configuring `photoscript`'s retry wrapper
+  with more attempts) remains unbuilt this session — manual, periodic checking has been
+  sufficient so far, just slow.
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
