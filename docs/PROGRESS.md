@@ -148,6 +148,15 @@
   landed); recovered via the script once Photos was properly relaunched and responsive again,
   which itself hit one more mid-run timeout+kill+retry (handled the same safe way, one
   transaction per item).
+- That recovery ran to completion over several hours (checked periodically rather than left
+  unattended, given how often this library has needed a kill/relaunch): 447 of 448 recorded
+  cleanly, 1 failed the same transient way and needed one more dry-run-then-`--apply` pass
+  (itself blocked by yet another Photos hang right after the main run exited — recovered the
+  same way: kill, explicit relaunch, confirm responsive, then proceed). 424 of the 447 came
+  back unaddressable for metadata (same explanation as before: a large chunk imported right
+  before a hard kill isn't done settling yet), consistent with the earlier, smaller sample.
+  Catalogue now 8,410 imports (`batch-032652` at 4,288). A fresh dry run next (see "Next"
+  above for the figures) to confirm what's genuinely left before resuming `import --apply`.
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
