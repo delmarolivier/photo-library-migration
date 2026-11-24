@@ -192,6 +192,51 @@
   because a ~20-hour-old chunk has had plenty of time to finish settling with iCloud before
   anything tried to address it. Catalogue now 8,857 imports (8,410 + 447), closing out
   `batch-032652`'s full orphan backlog from the fourth and fifth hangs.
+- Resumed `import --apply` for the real remaining 5 batches (2,234 pairs) — and immediately hit
+  a *different* kind of problem, self-inflicted rather than an AppleScript hang: the
+  background-task notification for a long-running backgrounded command reports "appears to be
+  waiting for interactive input" based on the *captured output's last line looking like a
+  prompt*, which stays true forever once the real import starts (nothing else is printed until
+  the whole batch finishes), whether or not the confirmation was actually answered. Three
+  resume attempts in a row triggered this notification:
+  1. `yes | uv run ... --apply` (multi-line `export PHOTOMIGRATE_CATALOGUE=...` /
+     `export PHOTOMIGRATE_PLAN_DIR=...` first): genuinely stuck — `ps` showed near-zero CPU on
+     the python process and no new plan file. Stopped correctly; nothing lost (catalogue and
+     "From Google" both unchanged). The `yes` pipe's stdin apparently isn't delivered to a
+     backgrounded task in this harness.
+  2. `PHOTOMIGRATE_CATALOGUE=... PHOTOMIGRATE_PLAN_DIR=... yes | uv run ... --apply` (env vars
+     as a same-line prefix): a shell scoping bug, not a hang — `VAR=x cmd1 | cmd2` only sets
+     `VAR` for `cmd1` (`yes`), not for the piped `cmd2`, so the import silently ran against the
+     *default* catalogue (`data/catalogue.sqlite`, nonexistent until this run created it empty)
+     and correctly found "0 actions" to do. Harmless (confirmed: real catalogue and "From
+     Google" both unchanged) but left `data/catalogue.sqlite` and `data/plans/` behind in the
+     repo checkout; deleted both (gitignored, never staged).
+  3. Stdin from a file (`< /tmp/claude-confirm-yes.txt` containing `"y\n"`) instead of a pipe:
+     this one actually worked — it got past the confirmation and started the real import. But
+     the notification looked identical to the first two (same frozen "Import into ...? [y/N]:"
+     tail), and it was stopped on that basis *without first checking real process state*. Only
+     after stopping it did `ps` show Photos' own CPU time had climbed from 0:18 to 0:58 while
+     it ran — clear evidence it had been genuinely working, not stuck — and a fresh
+     `import-20261124T171246Z-apply.json` plan file existed (the dry-run-then-confirm-then-
+     apply sequence only writes an *apply* plan after the confirmation is answered), which is
+     conclusive proof the "y" had been consumed. The premature stop orphaned 447 real imports
+     with nothing recorded ("From Google" grown from 8,229 to 8,676, catalogue unchanged at
+     8,857) — the same shape as every AppleScript hang this session, just caused by me this
+     time instead of `photoscript`. Recovered the same way as always
+     (`scripts/recover_orphaned_import.py` against the batch target `batch-032652` in that
+     apply plan): 447 of 447 recorded cleanly, zero failures, zero unaddressable-for-metadata
+     (recovered within minutes this time, not hours or days later, so nothing needed time to
+     settle with iCloud). Catalogue now 9,304 imports.
+  - Lesson: a "waiting for interactive input" notification for this CLI's `import --apply` is
+    not trustworthy evidence on its own, because the captured-output heuristic it's based on
+    can't distinguish "never answered the prompt" from "answered it and now mid-batch with
+    nothing left to print." Before stopping a background import task on that notification
+    alone, check `ps` CPU time for *both* the python process and Photos.app across at least two
+    checks a few minutes apart, and the plan directory for a freshly-written `*-apply.json`
+    (only appears after the confirmation is answered) — only treat it as genuinely stuck if
+    CPU is flat on both *and* the catalogue count is flat *and* a safe AppleScript probe itself
+    times out. The working method for actually answering the prompt in a backgrounded task
+    turned out to be stdin from a file, not a `yes` pipe.
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
