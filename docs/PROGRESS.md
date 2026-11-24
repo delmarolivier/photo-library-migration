@@ -168,6 +168,25 @@
   detects staleness and recovers automatically, or configuring `photoscript`'s retry wrapper
   with more attempts) remains unbuilt this session — manual, periodic checking has been
   sufficient so far, just slow.
+- That recovery (batch-032652's 447 orphans, 4th hang) ran cleanly for several hours, checked
+  every ~25 minutes, down to 42 pairs left — then hit a *fifth* hang, same shape (one
+  timeout+killall+retry logged, then nothing further), but this time with a new and worse
+  consequence: the Claude Code session/process itself ended while the retry was stuck, so
+  there was nobody to notice or recover it. Photos sat unresponsive for roughly 20 hours
+  (confirmed: the process watched all Monday, PID unchanged throughout, was still the exact
+  same PID Tuesday afternoon — i.e. `killall Photos` inside `photoscript`'s retry wrapper had
+  not actually terminated it despite logging success) until the next check found it. This is
+  the clearest demonstration yet that manual periodic checking is not a safety net on its own
+  — it only works while a session is alive to do the checking. Recovered the same way:
+  `pkill -9 -x Photos` (this time it actually died), confirmed via `osxphotos` that "From
+  Google" was unchanged at 8,229 (this hang was mid-metadata-call on one already-recovered
+  item, not mid-import, so no new orphans), explicit relaunch, waited for a responsive probe,
+  re-ran the recovery dry run (42 of 500 confirmed, matching 447 − 405 already recorded), then
+  `--apply` (backgrounded).
+- Given this now makes two separate kinds of unattended failure (a hang that outlives a
+  25-minute check interval, and a hang that outlives the session itself), an automated
+  watchdog — something that keeps checking and recovering even with nobody present — is no
+  longer just a nice-to-have; it's been offered to Delmar twice already and not yet built.
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
