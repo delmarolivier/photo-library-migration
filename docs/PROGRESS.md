@@ -187,6 +187,11 @@
   25-minute check interval, and a hang that outlives the session itself), an automated
   watchdog — something that keeps checking and recovering even with nobody present — is no
   longer just a nice-to-have; it's been offered to Delmar twice already and not yet built.
+- The remaining 42 pairs recorded cleanly on the next `--apply` pass: 42 of 42, zero failures,
+  zero unaddressable-for-metadata this time (unlike every earlier incident) — plausibly
+  because a ~20-hour-old chunk has had plenty of time to finish settling with iCloud before
+  anything tried to address it. Catalogue now 8,857 imports (8,410 + 447), closing out
+  `batch-032652`'s full orphan backlog from the fourth and fifth hangs.
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
