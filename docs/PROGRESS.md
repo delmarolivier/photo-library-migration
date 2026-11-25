@@ -237,6 +237,45 @@
     CPU is flat on both *and* the catalogue count is flat *and* a safe AppleScript probe itself
     times out. The working method for actually answering the prompt in a backgrounded task
     turned out to be stdin from a file, not a `yes` pipe.
+- Resumed `import --apply` again for the real remaining batches (stdin from a file, multi-line
+  `export`s, backgrounded). Its first batch (again named `batch-032652` — the deterministic
+  target name for whichever batch lands first in a given plan, not the same literal batch
+  reused) hit a *sixth* hang, this time correctly diagnosed as genuine from the start: the
+  task's own captured output showed the real `photoscript` "AppleScript timed out: retrying
+  killall + run_script" / "Photos app was terminated successfully" lines, and `ps` confirmed
+  sustained flat CPU on both the python process and Photos.app across a ~10 minute window —
+  not the single low reading that misled the two self-inflicted stops above. Recovered the
+  established way: `pkill -9 -x Photos` (verified dead via `ps`), explicit relaunch, responsive
+  on the first probe. `osxphotos` confirmed "From Google" had grown from 8,676 to 9,123 (447 of
+  this batch's 500 pairs landed, nothing recorded); the recovery dry run matched (447
+  recoverable, 53 genuinely not yet imported, left for the next `plan()`).
+- The recovery's own `--apply` hit one more mid-run timeout+kill+retry (same log signature) but
+  this time **self-recovered with no intervention** — Photos relaunched under a new PID on its
+  own and the script resumed recording items by itself. Rather than treat this as another
+  manual-recovery cycle, it was left running and checked periodically (roughly every 20–25
+  minutes): catalogue count and both processes' CPU time climbed a little at every single
+  check, confirming genuine (if very slow — about 13 items per 25-minute tick) progress rather
+  than a repeat hang, until it finished on its own after several hours.
+- Final tally for this batch's orphan backlog: 446 of 447 recorded cleanly on the first
+  `--apply` pass; 1 item (129778) failed outright with the same transient
+  `photoSetKeywords ... User canceled` error seen in earlier incidents and needed one more
+  dry-run-then-`--apply` pass, which recorded it. Combined: **447 of 447 recorded, 0 failures
+  left.** 435 of the 447 (434 + the 1 retried item) came back `PhotoNotFoundError`
+  ("Invalid photo id") when setting metadata — correctly recorded and in no danger of being
+  re-imported or duplicated, just missing favourite/caption/keywords for now, the same
+  documented fallback as every earlier incident. The 97% unaddressable rate (435/447) is the
+  highest yet, consistent with the running explanation: this recovery ran within minutes of the
+  kill rather than hours or days later, so almost none of a freshly-imported 500-item chunk had
+  had time to finish settling with iCloud/background processing before AppleScript tried to
+  address it. Catalogue now 9,751 imports (9,304 + 447).
+- Next: a fresh import dry run should show the real remaining batches (expected ~1,287 pairs
+  across `batch-133245`, `batch-137617`, `batch-144301`); resume `import --apply` for those,
+  using the now-confirmed-working method (stdin from a file, multi-line `export`s, and —
+  critically — never stopping a backgrounded import task on a "waiting for interactive input"
+  notification alone; verify via `ps` CPU trend on both processes and a fresh `*-apply.json`
+  first). Once that plan is fully applied, `index --apply` and the final `report` close out the
+  real migration. The automated-watchdog idea remains offered, not built, and not revisited
+  this session either.
 
 ### 2026-11-09/21: session 5: the AppleEvent timeout that outlives its own call
 - Resumed `import --apply` on Delmar's GO (3 remaining batches, 8,136 items, ~41 GB). Batch
