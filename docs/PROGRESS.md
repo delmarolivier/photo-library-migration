@@ -60,10 +60,19 @@
   with nothing recorded. Recovered with the existing script; see the session log below for the
   much larger (473 of 485) unaddressable-metadata count this time, and why `photoscript`'s
   retry wrapper can't rescue a hang like this on its own.
-- Next: resume `import --apply` (7 batches left: batch-114078 through batch-147164, plus
-  whatever `batch-032652`'s own still-missing 14 pairs add back into the next plan), confirm
-  it reaches the end of the plan, then `index --apply` and `report` per the runbook (must
-  reach 0 unaccounted). The Dates (90 batches) and Locations queues are optional. Not yet
+- Done (2026-11-26/27): closed out the last orphan backlog (393/393) and the real import's
+  final batch, fixing two genuine `photomigrate` bugs along the way — a fully-refused batch
+  silently marked "applied" (`FullBatchRefusalError`, `e2ec5b9`), and an AVI remux whose
+  codec Photos can't actually decode (`0bb3fef`). Catalogue now 11,039. 52 ordinary files are
+  stuck on what diagnosis points to as a Photos.app-internal "duplicate burst" validation
+  quirk, not a `photomigrate` bug — unresolved, needs Delmar's call on how to proceed. One
+  stray test asset (`baba_13-reencode.mov`, created diagnosing the AVI bug) needs removing
+  from the real library before the final `report`; blocked on the screen being unlocked for
+  GUI deletion. See the session log below.
+- Next: resolve the 52-asset `duplicate-bursts-not-supported` batch (Delmar's call) and remove
+  the stray test asset, confirm a clean dry run shows 0 remaining `import-batch` actions, then
+  `index --apply` and `report` per the runbook (must reach 0 unaccounted). The Dates (90
+  batches) and Locations queues are optional. Not yet
   looked into: why `duplicate-of-existing` rose from 852 to 1,129 during the Nov 10-21 gap.
   Also not yet looked into: whether the 473 unaddressable items from this session become
   addressable later (a retry pass for their metadata), and whether to make the remaining
@@ -78,6 +87,91 @@
     `.smx`): they are flagged, not ingested. Decide whether to support `.3g2`.
 
 ## Session log
+### 2026-11-26/27: session 7: two real bugs, and one that isn't ours
+- Finished closing out `batch-032652`'s last orphan backlog from task `b007hzaon`: 393 of
+  393 recorded, one item (141304) failed transiently with "User canceled" and needed a second
+  `--apply` pass, which recorded it cleanly. Catalogue reached 11,038 (10,645 + 393). A
+  session hang right after this completion (bridge unresponsive before any new task had
+  started) was recovered with the established procedure at zero cost, since nothing was in
+  flight.
+- Resumed `import --apply` for the real last batch (53 pairs) and hit a genuinely new failure
+  shape: Photos refused *all* 53, but — unlike every batch-refusal seen so far — the code only
+  warned and still marked the action applied, so the very next run reported "nothing to do"
+  and would have silently never retried it. Root cause, found by reading `runner.py`'s
+  action-key idempotency logic and confirming via a direct query against
+  `/Volumes/Photos/photomigrate/catalogue.sqlite` that the stuck row's status was `applied`
+  with 0 real imports: the self-healing property this design relies on (a partial refusal
+  narrows the next `plan()` to a smaller, genuinely new batch, so it gets a fresh action key)
+  doesn't hold when *nothing* succeeds — the next `plan()` regenerates the identical batch
+  under its *same* key, which is already marked applied. Fixed in
+  `src/photomigrate/importer/stage.py`: a new `FullBatchRefusalError` is raised instead of
+  just warning when `len(refused) == len(prepared)`, so the runner correctly marks the action
+  `failed` and a later run retries it for real. Added a regression test
+  (`test_a_fully_refused_batch_is_retried_as_a_whole`); full suite passes. Committed and
+  pushed as `e2ec5b9` (remote SHA verified). Manually corrected the one row in the live
+  catalogue that had already been wrongly marked `applied` before this fix existed, via a
+  direct, carefully-scoped `UPDATE` — the only hand-edit made to the catalogue this session.
+- With that fix in place the same 53-asset batch kept failing for real (not silently) on every
+  retry, including after full Photos relaunches with settle time. Narrowed it with
+  `PHOTOMIGRATE_CONFIG` (`batch_items` stepped down to 5, then 1) to exactly one file:
+  `baba_13`, an AVI→MOV transcode. Extracted the real source, reproduced the exact remux
+  `_transcode_avi` runs, and confirmed via `ffprobe` it's `msmpeg4v2` — Microsoft's MS-MPEG4v2
+  (FourCC `MP42`), a different bitstream from the ISO MPEG-4 Part 2 that ffmpeg's own `mpeg4`
+  name refers to, despite the similar name. A stream copy into a `.mov` container succeeds at
+  the container level (valid file, `ffmpeg` exits 0) but AVFoundation — what Photos' import
+  decodes with — can't play that codec back, so the import call silently drops the asset with
+  no catchable error, indistinguishable from a `FullBatchRefusalError` from the outside.
+  Verified directly with a standalone `photoscript.import_photos()` call: the remux (still
+  `msmpeg4v2`) is genuinely refused; an H.264 re-encode of the same source imports cleanly.
+  Fixed in the same file: `_transcode_avi` now ffprobes the remux result's codec against a
+  small allowlist (`h264`, `hevc`, `prores`, `mpeg4`, `dvvideo`, `mjpeg`) and falls back to the
+  existing re-encode path when it isn't one of them. Added a regression test using a synthetic
+  MS-MPEG4v2 fixture generated with `ffmpeg`'s `lavfi testsrc`; full suite passes (1,271
+  passed, 2 skipped — the usual two needing a real throwaway Photos library). Committed and
+  pushed as `0bb3fef` (remote SHA verified).
+  - Side effect of this diagnosis: the standalone verification call for the H.264 re-encode
+    left a real, uncatalogued test asset in the production "From Google" album —
+    `F68AC829-A3D7-4329-8F53-5C0BE45236AF` (`baba_13-reencode.mov`). Tried to remove it via
+    AppleScript `delete` first; this macOS/Photos version's AppleScript dictionary only types
+    `delete`'s direct parameter as `album or folder`, not an individual `media item` — every
+    syntax tried failed (`-1700`, `-10000`, `-10006`). GUI deletion (select + Cmd+Delete) is
+    the only method left, which needs `computer-use`, and the screen was locked both when this
+    was found and still is as of this entry — **not yet removed**. It must go before the final
+    `report` (which needs 0 unaccounted items).
+- Re-ran `import --apply` with both fixes and no diagnostic config: item 32652 (`baba_13`, now
+  properly re-encoded) imported for real. Catalogue moved to 11,039. The remaining 52 assets
+  of the original 53 landed as an ordinary partial-refusal straggler batch (re-chunked as
+  `batch-108525`) — the pre-existing, correctly-working design, not `FullBatchRefusalError`,
+  since it wasn't a *full* refusal.
+- That 52-asset batch then failed fully, twice in a row — ordinary JPG/MOV files, no AVI or
+  codec involved. Ruled out, in order: file corruption (`exiftool` clean), special characters
+  or path escaping, disk space, Photos being generally unresponsive (full relaunch + settle,
+  still failed), and async-commit timing (checked `osxphotos.PhotosDB` for items landing late;
+  none did). `/usr/bin/log show --last 10m --predicate 'process == "Photos"' --style compact`
+  (note: `log` is a zsh builtin here and swallows the normal syntax — the `/usr/bin/log` path
+  is needed) turned up the real proximate cause, present on every failed attempt, the real
+  pipeline's and the standalone diagnostic calls alike:
+  `[com.apple.photos.backend:Import] ERROR: (type: duplicate-bursts-not-supported, path:
+  <private>), file: <private>, line: 1827`, immediately followed by
+  `[com.apple.photos.backend:CameraConnectionKit] Error validating bursts: (null)`. Reading:
+  Photos' import path appears to invoke camera burst-duplicate validation (normally for
+  device imports) even for plain file-based `import_photos` calls, and refuses files it judges
+  duplicates of an existing "burst" already in the library — a case this import path doesn't
+  support, so it discards the assets with nothing catchable. This reads as a genuine
+  Photos.app/macOS-internal behaviour, not a `photomigrate` bug the way the AVI codec issue
+  was — **not fixed**, and not something blind retrying was going to resolve, which is the
+  point this session stopped and reported to Delmar rather than continuing to guess.
+- Unrelated, noted but not investigated: `osxphotos.PhotosDB(library_path).photos()` reports
+  14,191 total photos against AppleScript's `count media items` reporting 14,183 — an 8-item
+  gap not explained by anything from tonight (`date_added` filtering found no matching recent
+  items). Likely pre-existing.
+- Next: decide how to handle the 52 stuck assets (skip them for now and finish everything
+  else, or dig further into the burst-validation theory — a Delmar-level decision, not an
+  autonomous one, since every mechanical option tried tonight is exhausted). Remove the stray
+  `baba_13-reencode.mov` test asset once the screen is unlocked. Once both are resolved: a
+  clean dry run should show 0 remaining `import-batch` actions, then `index --apply` and the
+  final `report` (must reach 0 unaccounted) close out the real migration.
+
 ### 2026-11-21/22: session 6: the retry that also hangs
 - Resumed `import --apply` for the 8 remaining batches (3,615 pairs, 28.04 GB) after
   committing session 5's fix. The run's own pre-apply dry run and the confirm prompt went
