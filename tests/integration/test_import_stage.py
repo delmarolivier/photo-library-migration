@@ -17,7 +17,7 @@ from photomigrate.importer.stage import FROM_GOOGLE, ImportStage, PartialImportW
 from photomigrate.ingest.exif import ExifTool
 from photomigrate.ingest.livephotos import LivePhotoStage
 from photomigrate.ingest.stage import IngestStage
-from photomigrate.runner import Action, RunResult, run_stage
+from photomigrate.runner import Action, RunResult, StageFailedError, run_stage
 from photomigrate.testing.media import encode_image, synthetic_photo
 from photomigrate.testing.photos import DisposableLibrary
 from photomigrate.testing.takeout import Geo, TakeoutBuilder
@@ -425,6 +425,46 @@ def test_what_photos_imports_is_recorded_even_when_it_silently_refuses_one(
         action.kind == "import-batch" and [two_key, None] in action.details["assets"]
         for action in retry
     ), "the next plan picks the refused item back up"
+
+
+def test_a_fully_refused_batch_is_retried_as_a_whole(
+    setup,
+    tmp_path: Path,  # type: ignore[no-untyped-def]
+) -> None:
+    """Unlike an odd straggler (above), a batch Photos refuses outright leaves nothing
+    imported to narrow the next plan to a smaller, differently-keyed batch - so the exact same
+    batch would otherwise be replanned under its *same* action key and look "already applied"
+    forever. Raising keeps the action unmarked so the next run retries it for real (2026-11-27:
+    seen for a real batch Photos refused right after being relaunched, before it was ready)."""
+    path, takeout, _ = setup
+    with Catalogue.open(path) as catalogue:
+        one = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0001.JPG")
+        two = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0002.JPG")
+        three = catalogue.item_for_key("google", f"{ROOT}/{YEAR}/IMG_0003.HEIC")
+    library = DisposableLibrary(
+        tmp_path / "Refused.photoslibrary",
+        refuses=frozenset(
+            {f"{one}-IMG_0001.JPG", f"{two}-IMG_0002.JPG", f"{three}-IMG_0003.HEIC"}
+        ),
+    )
+
+    with (
+        ImportStage(library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()) as stage,
+        pytest.raises(StageFailedError, match="batch-"),
+    ):  # fmt: skip
+        run_stage(stage, catalogue_path=path, plan_dir=tmp_path / "plans", apply=True)
+
+    assert by_file(library) == {}, "nothing was actually imported"
+    with Catalogue.open(path) as catalogue:
+        assert catalogue.imports() == {}, "a full refusal records nothing, not even partially"
+
+        with ImportStage(
+            library, takeout, tmp_path / "work", zone=ZONE, config=ImportConfig()
+        ) as stage:
+            retry = [a for a in stage.plan(catalogue) if a.kind == "import-batch"]
+    assert len(retry) == 1 and len(retry[0].details["assets"]) == 3, (  # type: ignore[arg-type]
+        "the whole batch is replanned, not skipped as already applied"
+    )
 
 
 def test_what_photos_imports_is_recorded_even_when_its_details_fail(

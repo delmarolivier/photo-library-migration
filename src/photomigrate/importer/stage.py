@@ -25,7 +25,11 @@ any other QuickTime file. A remux that fails (an exotic codec) falls back to a r
 Photos' own import call can also leave the odd file out of an otherwise-successful batch of
 thousands, silently. Since that side effect can't be rolled back, every asset it did import is
 recorded regardless (``PartialImportWarning`` for the rest, which the next run retries as a
-smaller batch) rather than losing the whole batch's bookkeeping over one holdout.
+smaller batch) rather than losing the whole batch's bookkeeping over one holdout. If Photos
+leaves out *every* asset in the batch (seen right after a relaunch, before it was ready), there
+is no smaller batch to narrow down to - the same batch would look permanently "already applied"
+under its unchanged action key - so that case raises (``FullBatchRefusalError``) instead, which
+leaves the action unmarked and lets the next run retry the whole thing for real.
 
 A working copy exiftool refuses outright (its real content doesn't match its extension, say a
 JPEG saved as ``.png``) keeps its original bytes untouched instead of failing the batch; its
@@ -75,6 +79,18 @@ class PartialImportWarning(UserWarning):
     going regardless. A Google item left unimported or a working copy exiftool refused are
     retried automatically by a later run; an existing iCloud item Photos won't address by uuid
     is not (see ``apply``'s ``stage-to-delete``/``set-date``/``set-location`` handling)."""
+
+
+class FullBatchRefusalError(RuntimeError):
+    """Photos accepted none of a batch (as opposed to leaving out the odd straggler).
+
+    The "retried by a later run" guarantee above relies on the successes narrowing the next
+    plan() to a smaller, genuinely different batch (so it gets a fresh action key). With zero
+    successes the next plan() would regenerate this exact batch under its *same* key, which the
+    runner already has marked applied - stuck forever, not retried. Raising instead leaves the
+    action unmarked (failed, not applied) so the next run genuinely retries it; seen in
+    practice when Photos was asked to import right after being relaunched, before it was ready.
+    """
 
 
 def _sha256(path: Path) -> str:
@@ -312,6 +328,11 @@ class ImportStage:
                     # AppleScript failure, and for an asset Photos won't yet address by uuid -
                     # same symptom as a syndicated Shared-with-You item).
                     undetailed.append(f"{Path(asset[0][1]).name} ({exc})")
+            if refused and len(refused) == len(prepared):
+                raise FullBatchRefusalError(
+                    f"Photos imported none of {len(prepared)} assets in {action.target}: "
+                    f"{', '.join(refused)} (will retry next run)"
+                )
             if refused:
                 warnings.warn(
                     f"Photos did not import {len(refused)} of {len(prepared)} in "
