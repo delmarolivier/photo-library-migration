@@ -101,22 +101,51 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+#: Video codecs AVFoundation (what Photos' import call decodes with) actually plays back in a
+#: MOV container. A stream copy ffmpeg itself accepts can still carry a codec from this list's
+#: opposite - old camcorder AVI exports are commonly MS-MPEG4 ("msmpeg4v1/v2/v3", ffmpeg's name
+#: for the "MP42"/"MP43"/"MP4S" FourCCs - a different bitstream from the ISO MPEG-4 Part 2 this
+#: allowlist's "mpeg4" means, despite the similar name) - which Photos then refuses outright,
+#: the whole import call returning nothing for it, same symptom as any other full refusal.
+_QUICKTIME_VIDEO_CODECS = frozenset({"h264", "hevc", "prores", "mpeg4", "dvvideo", "mjpeg"})
+
+
+def _playable_video_codec(path: Path, ffprobe: str) -> bool:
+    probe = subprocess.run(  # noqa: S603  (fixed argv: our own values plus the file path)
+        [
+            ffprobe, "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],  # fmt: skip
+        capture_output=True, check=False, text=True,
+    )  # fmt: skip
+    return probe.returncode == 0 and probe.stdout.strip() in _QUICKTIME_VIDEO_CODECS
+
+
 def _transcode_avi(source: Path, dest: Path) -> None:
     """Remux ``source`` (an AVI container Photos refuses) into ``dest`` as MOV.
 
-    A stream copy is tried first (lossless, fast); a codec MOV cannot hold falls back to a
-    full re-encode.
+    A stream copy is tried first (lossless, fast); a codec MOV cannot hold, or that holds fine
+    but Photos' own import call then can't decode, falls back to a full re-encode.
     """
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError("ffmpeg is needed to import .avi videos (brew install ffmpeg)")
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        raise RuntimeError("ffprobe is needed to import .avi videos (brew install ffmpeg)")
     remux = [
         ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(source),
         "-c", "copy", "-map_metadata", "0", str(dest),
     ]  # fmt: skip
     # Fixed argv: our own values plus the file path; no shell.
     done = subprocess.run(remux, capture_output=True, check=False)  # noqa: S603
-    if done.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+    if (
+        done.returncode == 0
+        and dest.exists()
+        and dest.stat().st_size > 0
+        and _playable_video_codec(dest, ffprobe)
+    ):
         return
     reencode = [
         ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(source),

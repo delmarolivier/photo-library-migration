@@ -592,6 +592,41 @@ def test_an_avi_video_is_converted_to_mov_before_import(tmp_path: Path) -> None:
     assert read.duration > 0
 
 
+def test_an_avi_whose_codec_mov_cant_play_is_reencoded_not_just_remuxed(tmp_path: Path) -> None:
+    """A stream copy can succeed (valid MOV container, exit 0) while still carrying a codec
+    AVFoundation can't decode - old camcorder AVI exports are commonly MS-MPEG4 ("msmpeg4v2",
+    ffmpeg's name for the "MP42" FourCC - not the same bitstream as the ISO MPEG-4 Part 2 that
+    AVFoundation *does* play, despite the similar name). Photos then refuses the whole import
+    call for it, exactly like any other full refusal - so this must be re-encoded, not just
+    remuxed (2026-11-27: a real batch stuck on exactly this, see FullBatchRefusalError)."""
+    import subprocess
+
+    from photomigrate.importer.stage import _transcode_avi
+
+    source = tmp_path / "clip.avi"
+    subprocess.run(  # noqa: S603, S607
+        ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi",
+         "-i", "testsrc=duration=1:size=64x64:rate=5", "-c:v", "msmpeg4v2", str(source)],
+        check=True,
+    )  # fmt: skip
+    probe = subprocess.run(  # noqa: S603, S607
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    assert probe.stdout.strip() == "msmpeg4v2", "fixture didn't end up MS-MPEG4v2 as intended"
+
+    dest = tmp_path / "clip.mov"
+    _transcode_avi(source, dest)
+
+    played = subprocess.run(  # noqa: S603, S607
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(dest)],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    assert played.stdout.strip() in {"h264", "hevc"}, "should have fallen back to a re-encode"
+
+
 def test_a_file_whose_bytes_dont_match_its_extension_imports_with_its_metadata_unwritten(
     tmp_path: Path,
 ) -> None:
